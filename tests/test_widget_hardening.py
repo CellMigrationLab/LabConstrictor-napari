@@ -251,6 +251,25 @@ expect("worker_kept_between_runs", pid is not None and w._workers._workers, w._w
 
 
 def alive(pid):
+    """Is the process running? Never signals it: on Windows os.kill(pid, 0) would TERMINATE the process (any signal that is
+    not Ctrl-C/Ctrl-Break calls TerminateProcess), so the exit code is read instead. A zombie counts as gone.
+    """
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            return (
+                bool(kernel32.GetExitCodeProcess(ctypes.c_void_p(handle), ctypes.byref(code)))
+                and code.value == 259
+            )
+        finally:
+            kernel32.CloseHandle(ctypes.c_void_p(handle))  # 259 = STILL_ACTIVE
     try:
         os.kill(pid, 0)
     except OSError:
@@ -262,6 +281,13 @@ def alive(pid):
         != "Z"
     )
 
+
+# the helper itself: a running process is alive, one that has exited (and been waited for) is not
+_probe = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+expect("alive_sees_a_running_process", alive(_probe.pid), _probe.pid)
+_probe.kill()
+_probe.wait()
+expect("alive_sees_an_exited_process", not alive(_probe.pid), _probe.pid)
 
 v.close()
 end = time.time() + 15
