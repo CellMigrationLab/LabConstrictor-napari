@@ -18,6 +18,7 @@ if TYPE_CHECKING:  # napari and Qt objects are annotated by name only (no usable
 Result = dict[str, Any]  # one typed result of a tool: {"type": ..., "name": ..., ...}
 
 COULD_NOT_DISPLAY = "(could not display "
+NOT_FINITE = "(not a finite number)"  # a null in `values`: PROTOCOL.md says hosts read it as a number that is not finite
 MAX_DISPLAY_BYTES = (
     4 * 1024**3
 )  # a result image larger than this (uncompressed) is not loaded into the viewer
@@ -274,7 +275,8 @@ class ResultPresenter:
     @staticmethod
     def _values(result: Result) -> str:
         return ", ".join(
-            "%s=%s" % (key, round(value, 4) if isinstance(value, float) else value)
+            "%s=%s"
+            % (key, NOT_FINITE if value is None else round(value, 4) if isinstance(value, float) else value)
             for key, value in result["values"].items()
         )
 
