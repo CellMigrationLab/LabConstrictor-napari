@@ -25,10 +25,10 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: tests
         run: |
-          python test_units.py
-          xvfb-run -a python test_widget.py
-          xvfb-run -a python test_file_sources.py
-          xvfb-run -a python test_run_state.py
+          # every script in tests/ (a new test is picked up without editing this file); all run, then the job fails if any did
+          status=0
+          for t in test_*.py; do echo "::group::$t"; xvfb-run -a python "$t" || { echo "FAILED: $t"; status=1; }; echo "::endgroup::"; done
+          exit $status
       - name: Mesa llvmpipe software OpenGL (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -52,9 +52,13 @@ jobs:
         run: |
           # macOS: Qt software rendering; Windows: QT_OPENGL=desktop was exported by the Mesa step (empty values are invalid)
           if [ "$RUNNER_OS" = "macOS" ]; then export QT_OPENGL=software; fi
-          python test_units.py
-          python test_widget.py
-          python test_file_sources.py
+          # every script in tests/ except test_run_state.py on Windows, which sends signals with kill -9 and looks for worker processes with pgrep (POSIX only)
+          status=0
+          for t in test_*.py; do
+            [ "$t" = test_run_state.py ] && [ "$RUNNER_OS" = Windows ] && continue
+            echo "::group::$t"; python "$t" || { echo "FAILED: $t"; status=1; }; echo "::endgroup::"
+          done
+          exit $status
   lint:
     runs-on: ubuntu-latest
     steps:

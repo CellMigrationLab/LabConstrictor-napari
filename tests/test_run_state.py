@@ -83,8 +83,10 @@ def expect(name, condition, detail=""):
 
 
 def workers():
+    """Worker processes started by THIS test (children of this process): a machine-wide search would also find, and kill,
+    the workers of any other napari or test running at the same time."""
     return subprocess.run(
-        ["pgrep", "-f", "labconstrictor_tools serve"], capture_output=True, text=True
+        ["pgrep", "-P", str(os.getpid()), "-f", "labconstrictor_tools serve"], capture_output=True, text=True
     ).stdout.split()
 
 
@@ -124,7 +126,9 @@ w.gui.seconds.value = 30
 w.last_task = None
 w.gui()
 pump(2.0)
-subprocess.run(["kill", "-9", *workers()[-1:]])
+subprocess.run(
+    ["kill", "-9", str(w.worker.proc.pid)]
+)  # the worker of this run, not "the highest pid" (pids wrap)
 wait()
 expect(
     "crash_is_not_called_cancel",
