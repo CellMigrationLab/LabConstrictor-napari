@@ -1,6 +1,6 @@
 """The Qt backend end to end (issue #41): the plugin is offered under Plugins > LabConstrictor tools in napari's real menu, opens
-from that menu entry, and the pieces that depend on the Qt binding work on the one installed (PyQt6, PySide6 or the deprecated
-PyQt5): a long form scrolls, the Details dialog really opens (QMessageBox.exec_ through qtpy) and shows the run's record, the
+from that menu entry, and the pieces that depend on the Qt binding work on the one installed (PyQt6 or
+PySide6): a long form scrolls, the Details dialog really opens (QMessageBox.exec_ through qtpy) and shows the run's record, the
 status line and the results table dock render what the tool returned.
 
 The CI job names the backend it installed in LC_EXPECT_QT ("PyQt6", "PySide6"); the test then fails if qtpy picked another one,

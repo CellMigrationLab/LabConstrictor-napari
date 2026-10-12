@@ -17,7 +17,6 @@ dependencies = ["labconstrictor-tools>=0.1", "napari", "magicgui", "qtpy", "nump
 # napari's own extras carry its exclusions (Qt 6.11.0 and 6.11.1 are excluded at napari 0.9.2).
 test-pyqt6 = ["napari[pyqt6]", "pandas", "scipy", "imageio"]      # recommended
 test-pyside6 = ["napari[pyside6]", "pandas", "scipy", "imageio"]  # recommended
-test-pyqt5 = ["napari[pyqt5]", "pandas", "scipy", "imageio"]      # DEPRECATED legacy (napari deprecated PyQt5 in 0.8.0); retire with napari's Qt5 removal
 
 [project.urls]
 Repository = "https://github.com/CellMigrationLab/napari-labconstrictor"
