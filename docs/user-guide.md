@@ -5,11 +5,12 @@ One dock widget shows every installed LabConstrictor app. You pick an app and a 
 > [!WARNING]
 > **Under heavy construction.** This plugin is untested and unlikely to be stable. Expect bugs, missing features and changes without notice. Do not rely on it for work you cannot redo.
 >
-> Tested on Linux. Windows and macOS are untested. The plugin is installed from GitHub; it is not on PyPI yet.
+> The plugin is installed from GitHub; it is not on PyPI yet.
 
 ## What you need
 
 - [napari](https://napari.org), in a Python environment with **Python 3.10 or newer**.
+- napari version: the project's automated type check runs against napari 0.9.2 and magicgui 0.10.2 (a type check only: napari is not run there). The automated tests install whichever napari version pip picks, so no napari version is confirmed by a test run.
 - At least one LabConstrictor app installed on your computer (the [apps that work in napari](https://labconstrictor.cellmig.org/apps/?host=napari) are listed in the App Centre). Installing the app and installing this plugin are two separate steps: the app's installer registers it on your computer, which is how the plugin finds it.
 
 ## Install
@@ -24,6 +25,8 @@ These are source archives, so you do not need `git`. Restart napari.
 ## Open it
 
 Choose **Plugins > LabConstrictor tools**. The widget lists the apps registered on your computer. Pick an app, pick a tool, set the parameters, and press Run.
+
+A first run needs an installed LabConstrictor app that declares tools. If none is registered, the app list shows "(none registered)" and there is nothing to run.
 
 - Image inputs take an open layer or a file (a chosen file wins). TIFF and OME-TIFF always work; other formats work if the app has `imageio`.
 - Results appear as layers, a table, or in the status line. A tool that finds nothing shows a notice, not an error.

@@ -1,14 +1,14 @@
 # napari-labconstrictor
 
-One generic Napari dock widget for **every installed LabConstrictor app**. Pick an app and a tool; the form is generated from the
+One generic napari dock widget for **every installed LabConstrictor app**. Pick an app and a tool; the form is generated from the
 tool's declared schema (see [LabConstrictor-Tools](https://github.com/CellMigrationLab/LabConstrictor-Tools)). The tool runs in the
-app's own Python environment in a separate process, so Napari never imports the app's packages and apps with conflicting
+app's own Python environment in a separate process, so napari never imports the app's packages and apps with conflicting
 dependencies coexist.
 
 ![widget](docs/screenshot.png)
 
 ## Install
-In the Napari environment (Python >= 3.10):
+In the napari environment (Python >= 3.10):
 
     pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/heads/main.zip      # the runtime (not on PyPI yet)
     pip install https://github.com/CellMigrationLab/napari-labconstrictor/archive/refs/heads/main.zip
@@ -57,5 +57,5 @@ registry, so no real LabConstrictor app is needed. Real apps are tested in their
 Layout: `napari_labconstrictor/` = `_widget.py` (the dock widget), `_schema.py` (schema -> magicgui signature), `_results.py`,
 `_units.py`, `_workers.py` (worker cache), `napari.yaml` (npe2 manifest).
 
-Status: **testing phase**. Tested on Linux (Qt5, Napari 0.9) under Xvfb. Windows and macOS are untested: to help, follow the
+Status: **testing phase**. Tested on Linux (Qt5, napari 0.9) under Xvfb. Windows and macOS are untested: to help, follow the
 [human test protocol](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/HUMAN_TEST_PROTOCOL.md). License: MIT.
