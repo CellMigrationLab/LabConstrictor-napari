@@ -1,4 +1,4 @@
-# napari-labconstrictor
+# LabConstrictor-napari
 
 One generic napari dock widget for **every installed LabConstrictor app**. Pick an app and a tool; the form is generated from the
 tool's declared schema (see [LabConstrictor-Tools](https://github.com/CellMigrationLab/LabConstrictor-Tools)). The tool runs in the
