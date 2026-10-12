@@ -7,6 +7,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import qtpy
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -42,10 +44,17 @@ class Leave(unittest.TestCase):
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("ValueError: boom", done.stderr)
 
+    @unittest.skipUnless(qtpy.API_NAME.startswith("PyQt"), "PySide6 keeps the normal exit")
     def test_the_exit_is_immediate_not_through_the_exit_handlers(self):
         done = run("import atexit\natexit.register(lambda: print('handler ran'))\nsys.exit(0)")
         self.assertEqual(done.returncode, 0)
         self.assertNotIn("handler ran", done.stdout)
+
+    @unittest.skipIf(qtpy.API_NAME.startswith("PyQt"), "a PyQt binding uses _leave")
+    def test_a_non_pyqt_binding_exits_normally_through_the_exit_handlers(self):
+        done = run("import atexit\natexit.register(lambda: print('handler ran'))\nsys.exit(0)")
+        self.assertEqual(done.returncode, 0)
+        self.assertIn("handler ran", done.stdout)
 
 
 if __name__ == "__main__":

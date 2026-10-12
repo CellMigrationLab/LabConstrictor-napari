@@ -244,7 +244,7 @@ class LabConstrictorWidget(QWidget):
         self.form_holder.addStretch(1)  # a short form sits at the top instead of being spread over the dock
         self.form_scroll = QScrollArea()
         self.form_scroll.setWidgetResizable(True)
-        self.form_scroll.setFrameShape(QFrame.NoFrame)
+        self.form_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.form_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )  # a form wider than the dock scrolls sideways: nothing is clipped out of reach
@@ -263,7 +263,7 @@ class LabConstrictorWidget(QWidget):
         outcome_layout.addStretch(1)
         self.outcome_scroll = QScrollArea()
         self.outcome_scroll.setWidgetResizable(True)
-        self.outcome_scroll.setFrameShape(QFrame.NoFrame)
+        self.outcome_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.outcome_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.outcome_scroll.setMaximumHeight(OUTCOME_MAX_HEIGHT_PX)
         self.outcome_scroll.setMinimumHeight(OUTCOME_MIN_HEIGHT_PX)
@@ -337,7 +337,7 @@ class LabConstrictorWidget(QWidget):
         self.region_toggles = self._add_region_toggles(tool)
         self._apply_presentation(tool)
         self._add_choice_boxes(tool)
-        self.gui.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.gui.native.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.form_holder.insertWidget(0, self.gui.native)
         self._schedule_choices(0)
         for param in tool["inputs"]:
@@ -1178,7 +1178,7 @@ class LabConstrictorWidget(QWidget):
         box.setWindowTitle("LabConstrictor - last run")
         box.setText("Run details (copy this when asking for help)")
         box.setDetailedText(self.last_details)
-        box.exec_()
+        box.exec()
 
     def closeEvent(self, event: Any) -> None:  # Qt API name
         self._reaper.stop()
