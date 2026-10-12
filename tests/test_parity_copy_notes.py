@@ -22,10 +22,12 @@ pump(0.3)
 for kind in ("terminal", "python"):
     text = widget.copy_as_command(kind)
     lines = text.split("\n")
+    # the terminal line carries the path as it is; the Python snippet carries a string literal (Windows backslashes doubled)
+    path_text = str(work / "three.tif") if kind == "terminal" else repr(str(work / "three.tif"))
     expect(
         "channel_note_%s" % kind,
         "# image: napari sent only channel 2; the command sends the whole file" in lines
-        and f"{work / 'three.tif'}" in text,
+        and path_text in text,
         text,
     )
     expect(

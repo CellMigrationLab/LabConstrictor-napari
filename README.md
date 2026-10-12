@@ -57,6 +57,13 @@ registers each app; for a manual registration see the Tools repository: `labcons
     xvfb-run -a python test_parity_results.py      # outline cap counts features; the sentence for a result type this version does not know
     xvfb-run -a python test_parity_region.py       # RegionOf: refused for an image given as a file; at most 65 535 shapes, 16 bit
     xvfb-run -a python test_parity_points_frame.py # points/outlines without apply_to go on the first image input
+    python test_harness_exit.py                    # a test script's exit code still carries its verdict (os._exit in tests/_paths.py)
+
+CI runs every `tests/test_*.py` (a loop, not a list). Each script leaves through `os._exit` (`tests/_paths.py`): PyQt5's own exit
+handler (`_qtcore_cleanup`) crashes the interpreter now and then with a napari window open (about 1 run in 10 on Linux; faulthandler shows
+the stack), after the verdict is printed. This is a test-harness measure only (the exit code still carries the verdict, see
+`tests/test_harness_exit.py`). napari's PyQt5 backend is deprecated: the move to Qt6 (issue #41) must remove `_leave` from
+`tests/_paths.py` and let the scripts exit normally again.
 
 The tests register the example app shipped with `labconstrictor-tools` (`labconstrictor_tools.examples.synthetic`) in a private
 registry, so no real LabConstrictor app is needed. Real apps are tested in their own repositories.
