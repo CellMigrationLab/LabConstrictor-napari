@@ -5,7 +5,7 @@ One dock widget shows every installed LabConstrictor app. You pick an app and a 
 > [!WARNING]
 > **Under heavy construction.** This plugin is untested and unlikely to be stable. Expect bugs, missing features and changes without notice. Do not rely on it for work you cannot redo.
 >
-> Tested on Linux. Windows and macOS are untested. The plugin is installed from GitHub; it is not on PyPI yet.
+> The plugin is installed from GitHub; it is not on PyPI yet.
 
 ## What you need
 
