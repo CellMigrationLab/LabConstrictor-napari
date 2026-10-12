@@ -1,10 +1,21 @@
 name: ci
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 3 * * *"   # nightly, so main is re-checked against new napari/Qt releases
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}   # never cancel a run on main
 # Qt backends (issue #41): Linux tests PyQt6 and PySide6, one isolated environment each (never both bindings in one process; napari's
 # own extras carry its exclusions: Qt 6.11.0 and 6.11.1 at napari 0.9.2). Windows and macOS stay on the deprecated PyQt5 until a later
 # PR adds Qt6 jobs there: that is deliberate, not forgotten. Python 3.11 is the tested baseline (napari 0.8+ needs 3.11+).
 jobs:
   test-linux:
+    needs: lint   # a lint failure costs one runner instead of the GUI jobs
+    timeout-minutes: 45
     name: test (ubuntu, ${{ matrix.qt }})
     strategy:
       fail-fast: false
@@ -16,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: pyproject.toml }
       - name: Qt libraries
         run: sudo apt-get update && sudo apt-get install -y xvfb libegl1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
       - name: Private virtualenv
@@ -32,6 +43,8 @@ jobs:
           for t in test_*.py; do echo "::group::$t"; xvfb-run -a python "$t" || { echo "FAILED: $t"; status=1; }; echo "::endgroup::"; done
           exit $status
   test-legacy:
+    needs: lint   # a lint failure costs one runner instead of the GUI jobs
+    timeout-minutes: 45
     name: test (${{ matrix.os }}, PyQt5 legacy)
     strategy:
       fail-fast: false
@@ -42,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "${{ matrix.python }}" }
+        with: { python-version: "${{ matrix.python }}", cache: pip, cache-dependency-path: pyproject.toml }
       - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-pyqt5]"
       - name: Mesa llvmpipe software OpenGL (Windows)
         if: runner.os == 'Windows'
@@ -74,19 +87,21 @@ jobs:
           done
           exit $status
   lint:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: pyproject.toml }
       - run: pip install black==26.10.0 ruff==0.16.10
       - run: black --check . && ruff check .
   typecheck:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: pyproject.toml }
       # the real napari, magicgui and Qt (PyQt6, the recommended backend) are installed on purpose, so mypy checks our calls against
       # their typed signatures; nothing is run and no display is needed. napari[pyqt6] brings PyQt6 and its Qt exclusions.
       # The pins are the versions the code was checked against: raise them together
