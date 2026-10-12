@@ -179,7 +179,9 @@ expect(
     "always fails" in seen.get("detailed", "") and "log file:" in seen.get("detailed", ""),
     seen.get("detailed", "")[:200],
 )
-expect("details_dialog_title", "LabConstrictor" in seen.get("title", ""), seen)
+# Qt documents it: a QMessageBox on macOS ignores its window title (it reads back empty)
+if sys.platform != "darwin":
+    expect("details_dialog_title", "LabConstrictor" in seen.get("title", ""), seen)
 
 (EVIDENCE / "qt_backend_report.json").write_text(json.dumps({"backend": qtpy.API_NAME, **report}, indent=2))
 print(json.dumps(report, indent=2))
