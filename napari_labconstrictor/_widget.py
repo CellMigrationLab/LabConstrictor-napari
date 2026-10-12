@@ -507,7 +507,12 @@ class LabConstrictorWidget(QWidget):
             self.file_sources.get(param["region_of"]),
             form_values.get(param["region_of"]),
             job_dir,
+            image_label=self._label_of(param["region_of"]),
         )
+
+    def _label_of(self, name: str) -> str:
+        """The label the person sees for parameter `name` of the current tool."""
+        return next((p["label"] for p in cast(Tool, self.tool)["inputs"] if p["name"] == name), name)
 
     # ---- presentation hints: group headings, advanced settings, enabled_when ----
     def _apply_presentation(self, tool: Tool) -> None:
@@ -850,7 +855,10 @@ class LabConstrictorWidget(QWidget):
         }
         replace = {o["name"] for o in self._run_tool["outputs"] if o.get("replace")}
         self.message_label.setVisible(False)
-        self.presenter = ResultPresenter(self.viewer, self._run_app, shown_inputs, replace, self._docks)
+        images = [p["name"] for p in self._run_tool["inputs"] if p["type"] in ("image", "labels")]
+        self.presenter = ResultPresenter(
+            self.viewer, self._run_app, shown_inputs, replace, self._docks, image_inputs=images
+        )
         self._set_running(True)
         self._started = time.perf_counter()
 
@@ -917,7 +925,8 @@ class LabConstrictorWidget(QWidget):
             return _OMIT
         if value is None or (isinstance(value, Path) and str(value) in ("", ".")):
             if param["required"]:
-                raise ValueError("'%s' is required" % param["label"])
+                hint = ": open an image or choose a file" if param["type"] in ("image", "labels") else ""
+                raise ValueError("[missing_parameter] '%s' is required%s" % (param["label"], hint))
             return _OMIT
         if param["type"] in ("image", "labels"):
             path = job_dir / (name + ".tif")
@@ -929,7 +938,7 @@ class LabConstrictorWidget(QWidget):
 
     def _export_file_source(self, param: Param, path: Path, job_dir: Path) -> str:
         if not path.is_file():
-            raise ValueError("'%s': file not found: %s" % (param["label"], path))
+            raise ValueError("[file_not_found] image file not found: %s" % path)
         picked = self._picked_channel(param["name"])
         if picked is not None:  # PickChannel: the file's chosen channel is written for the worker
             path = channel_file(path, picked, param["label"], job_dir / (param["name"] + ".tif"))
@@ -982,12 +991,13 @@ class LabConstrictorWidget(QWidget):
             text = command.python_snippet(app, self.tool, values)
         else:
             text = command.command_line(app, self.tool, values, python=self.apps[app].get("python", "python"))
-        selected = [n for n, t in self.region_toggles.items() if t.value]
-        if selected:
-            text = (
-                "# %s: the selection cannot be copied; save it as a label image and put its path here\n%s"
-                % (", ".join(selected), text)
-            )
+        notes = self._command_notes()
+        if (
+            notes
+        ):  # as comment lines after the placeholder line (if any), before the command: the order every host uses
+            lines = text.split("\n")
+            head = next((i for i, line in enumerate(lines) if not line.startswith("#")), len(lines))
+            text = "\n".join(lines[:head] + notes + lines[head:])
         clipboard = QApplication.clipboard()
         if (
             clipboard is None
@@ -1001,6 +1011,27 @@ class LabConstrictorWidget(QWidget):
             % ("Python snippet" if kind == "python" else "terminal command")
         )
         return text
+
+    def _command_notes(self) -> list[str]:
+        """One comment line for everything the command cannot say: a selection (not copied) and a chosen channel (the command
+        sends the whole file). Same sentences and order as the other hosts, per parameter in the tool's order.
+        """
+        notes = []
+        for param in cast(Tool, self.tool)["inputs"]:
+            name = param["name"]
+            toggle = self.region_toggles.get(name)
+            if toggle is not None and toggle.value:
+                notes.append(
+                    "# %s: the selection cannot be copied; save it as a label image and put its path here"
+                    % name
+                )
+                continue
+            picked = self._picked_channel(name)
+            if picked is not None:
+                notes.append(
+                    "# %s: napari sent only channel %d; the command sends the whole file" % (name, picked + 1)
+                )
+        return notes
 
     def _picked_channel(self, name: str) -> int | None:
         """The index of the channel the person chose for image parameter `name`, or None when there is nothing to choose."""

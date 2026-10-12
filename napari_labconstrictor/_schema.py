@@ -9,7 +9,13 @@ from typing import Annotated, Any
 Tool = dict[str, Any]  # one tool of a registry schema, as the JSON file holds it
 Param = dict[str, Any]  # one input of a tool
 
-_INT_RANGE = (-(2**31), 2**31 - 1)  # what a Qt spin box can hold: used only when the schema gives no bound
+MAX_FORM_INTEGER = (
+    2**53 - 1
+)  # the largest whole number the spin box holds exactly (a double); the notebook form's limit too
+_INT_RANGE = (
+    -MAX_FORM_INTEGER,
+    MAX_FORM_INTEGER,
+)  # used where the schema gives no bound, and as the cap of a declared one
 _FLOAT_RANGE = (-1e15, 1e15)  # likewise for a float spin box
 _FINE_STEP = 1e-4  # Qt rounds to the step: small enough for calibrations such as 0.325 um/px
 _COARSE_STEP = 0.01  # step of a float that is neither a unit-bearing value nor below 1
@@ -55,6 +61,9 @@ def _parameter(param: Param, layer_classes: dict[str, type]) -> inspect.Paramete
     annotation, options = _annotation(param, layer_classes)
     if param.get("description"):
         options["tooltip"] = param["description"]
+    if kind == "integer" and _int_limit_applies(param):
+        note = "Whole numbers up to +-%d." % MAX_FORM_INTEGER
+        options["tooltip"] = (options["tooltip"] + " " if "tooltip" in options else "") + note
     options["label"] = param["label"] + (" (%s)" % param["unit"] if param.get("unit") else "")
     if not param["required"] and kind in _LAYER_TYPES + _PATH_TYPES:
         annotation = annotation | None  # nullable widget
@@ -72,6 +81,12 @@ def _parameter(param: Param, layer_classes: dict[str, type]) -> inspect.Paramete
         default=default,
         annotation=Annotated[annotation, options],
     )
+
+
+def _int_limit_applies(param: Param) -> bool:
+    """True when the box's own limit, not the tool's, bounds this integer (a missing or larger declared Min/Max)."""
+    low, high = _INT_RANGE
+    return not (low <= param.get("minimum", low - 1) and param.get("maximum", high + 1) <= high)
 
 
 def _annotation(param: Param, layer_classes: dict[str, type]) -> tuple[Any, dict[str, Any]]:
@@ -98,8 +113,8 @@ def _annotation(param: Param, layer_classes: dict[str, type]) -> tuple[Any, dict
         raise ValueError("parameter %r has the unknown type %r" % (param["name"], kind))
     is_int = kind == "integer"
     low, high = _INT_RANGE if is_int else _FLOAT_RANGE
-    options["min"] = param.get("minimum", low)
-    options["max"] = param.get("maximum", high)
+    options["min"] = max(param.get("minimum", low), low) if is_int else param.get("minimum", low)
+    options["max"] = min(param.get("maximum", high), high) if is_int else param.get("maximum", high)
     if not is_int:
         # Qt rounds to the step, which must never corrupt calibrations such as 0.325 um/px.
         options["step"] = (

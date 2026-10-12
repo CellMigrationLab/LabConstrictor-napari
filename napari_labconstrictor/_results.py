@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +18,7 @@ if TYPE_CHECKING:  # napari and Qt objects are annotated by name only (no usable
 Result = dict[str, Any]  # one typed result of a tool: {"type": ..., "name": ..., ...}
 
 COULD_NOT_DISPLAY = "(could not display "
+NOT_FINITE = "(not a finite number)"  # a null in `values`: PROTOCOL.md says hosts read it as a number that is not finite
 MAX_DISPLAY_BYTES = (
     4 * 1024**3
 )  # a result image larger than this (uncompressed) is not loaded into the viewer
@@ -55,8 +57,10 @@ class ResultPresenter:
         inputs: dict[Any, Any],  # looked up with .get(None) when a result names no input
         replace: Any = (),
         docks: dict[tuple[str, str], QWidget] | None = None,
+        image_inputs: Sequence[str] = (),
     ) -> None:
         self.viewer, self.app, self.inputs = viewer, app_name, inputs  # inputs: the layers chosen in the form
+        self.image_inputs = tuple(image_inputs)  # names of the image/labels parameters, in the tool's order
         self.replace = set(replace)  # output names whose previous result this run replaces (Replace())
         self.docks = docks if docks is not None else {}  # (app, table name) -> dock widget kept between runs
         self.tables: dict[str, list[list[str]]] = {}
@@ -75,6 +79,8 @@ class ResultPresenter:
 
     def show(self, result: Any) -> str:
         kind = result.get("type", "<no type>") if isinstance(result, dict) else "<not an object>"
+        if isinstance(result, dict) and "type" in result and kind not in self._handlers:
+            return self._unknown(kind, result)
         try:
             return self._handlers[kind](result) or ""
         except Exception as error:  # noqa: BLE001 - a display problem must not hide the other results
@@ -84,6 +90,27 @@ class ResultPresenter:
                 kind,
                 repr(error) if isinstance(error, KeyError) else error,
             )
+
+    def _unknown(self, kind: Any, result: Result) -> str:
+        """A result type this version does not know: say so in one sentence, with its name and the file to look in."""
+        log.warning("napari: a result of the unknown type %r (%s)", kind, result.get("name"))
+        where = " (name '%s'%s)" % (
+            result.get("name"),
+            ", file %s" % result["path"] if "path" in result else "",
+        )
+        return "%s%s: the tool returned a result of the type '%s', which this version of napari LabConstrictor cannot show%s)" % (
+            COULD_NOT_DISPLAY, kind, kind, where,
+        )  # fmt: skip
+
+    def _frame_scale(self, result: Result) -> tuple[float, float]:
+        """The (y, x) scale of the image a points/shapes result is placed on: the image named by `apply_to`, else the
+        FIRST IMAGE input (PROTOCOL.md), never the first input of some other type. (1, 1) when there is no such image.
+        """
+        name = result.get("apply_to") or next(iter(self.image_inputs), None)
+        source = self.inputs.get(name) if name is not None else None
+        if source is None or not hasattr(source, "scale"):
+            return (1.0, 1.0)
+        return (float(source.scale[-2]), float(source.scale[-1]))
 
     def _layer_name(self, result: Result) -> str:
         return "%s:%s" % (self.app, result["name"])
@@ -182,8 +209,7 @@ class ResultPresenter:
         frame = pd.read_csv(result["path"])
         data = frame[["y", "x"]].to_numpy(dtype=float)
         properties = {c: frame[c].to_numpy() for c in frame.columns[2:]}
-        source = self.inputs.get(result.get("apply_to")) or next(iter(self.inputs.values()), None)
-        scale = tuple(source.scale[-2:]) if source is not None and hasattr(source, "scale") else (1.0, 1.0)
+        scale = self._frame_scale(result)
         name = self._layer_name(result)
         if result["name"] in self.replace and name in self.viewer.layers:
             self.viewer.layers.remove(
@@ -205,10 +231,14 @@ class ResultPresenter:
         import json
 
         collection = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
+        features = collection.get("features", [])
+        total = len(
+            features
+        )  # what is counted and capped is the tool's objects (features), not their polygon parts
         polygons: list[np.ndarray] = []
         rows: list[dict[str, Any]] = []
         with_holes = 0
-        for feature in collection.get("features", []):
+        for feature in features[:MAX_SHAPES]:
             geometry = feature["geometry"]
             parts = [geometry["coordinates"]] if geometry["type"] == "Polygon" else geometry["coordinates"]
             for part in parts:
@@ -216,13 +246,9 @@ class ResultPresenter:
                 polygons.append(ring[:, ::-1])  # GeoJSON [x, y] -> Napari (y, x)
                 rows.append(feature.get("properties") or {})
                 with_holes += len(part) > 1
-        total = len(polygons)
-        if total > MAX_SHAPES:
-            polygons, rows = polygons[:MAX_SHAPES], rows[:MAX_SHAPES]
         keys = sorted({k for row in rows for k in row})
         properties = {k: np.array([row.get(k, "") for row in rows]) for k in keys}
-        source = self.inputs.get(result.get("apply_to")) or next(iter(self.inputs.values()), None)
-        scale = tuple(source.scale[-2:]) if source is not None and hasattr(source, "scale") else (1.0, 1.0)
+        scale = self._frame_scale(result)
         name = self._layer_name(result)
         if result["name"] in self.replace and name in self.viewer.layers:
             self.viewer.layers.remove(
@@ -244,12 +270,13 @@ class ResultPresenter:
                 "**%s**: %d outline(s) have holes; the layer draws only the outer boundary."
                 % (result["name"], with_holes)
             )
-        return "outlines '%s' (%d)" % (result["name"], len(polygons))
+        return "outlines '%s' (%d)" % (result["name"], min(total, MAX_SHAPES))
 
     @staticmethod
     def _values(result: Result) -> str:
         return ", ".join(
-            "%s=%s" % (key, round(value, 4) if isinstance(value, float) else value)
+            "%s=%s"
+            % (key, NOT_FINITE if value is None else round(value, 4) if isinstance(value, float) else value)
             for key, value in result["values"].items()
         )
 
