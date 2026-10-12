@@ -85,7 +85,8 @@ expect(
     "optional_string" in w.unset_toggles
     and not w.unset_toggles["optional_string"].value
     and not w.gui.optional_string.enabled
-    and "optional_string=None" in w.status.text(),
+    and "optional_string=(not a finite number)"
+    in w.status.text(),  # the tool got None; a null value reads like this (NP-5)
     w.status.text(),
 )
 v.screenshot(str(EVIDENCE / "widget_kitchen_sink.png"), canvas_only=False)

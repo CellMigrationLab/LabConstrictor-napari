@@ -12,7 +12,8 @@ import napari
 from qtpy.QtWidgets import QApplication
 
 tools = Path(tempfile.mkdtemp(prefix="lcadv_"))
-(tools / "adv_lc_tools.py").write_text(r"""
+(tools / "adv_lc_tools.py").write_text(
+    r"""
 import time
 from typing import Annotated, Optional
 import numpy as np
@@ -42,7 +43,9 @@ def dims(ndim: int = 2, rows: int = 3, text_length: int = 10, fail: bool = False
     shape = (16,) * ndim
     pts = pd.DataFrame({"y": np.arange(rows, dtype=float), "x": np.arange(rows, dtype=float)}) if rows else pd.DataFrame({"y": [], "x": []})
     return np.ones(shape, np.uint8), pts, ("word " * text_length) + "<b>not bold</b> [link](http://example.com) **bold**"
-""")
+""",
+    encoding="utf-8",
+)
 subprocess.run(
     [
         sys.executable,

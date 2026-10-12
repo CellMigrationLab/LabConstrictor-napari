@@ -53,7 +53,10 @@ expect(
     "run synthetic scalar_echo" in line and "a=1.5" in line and "b=2.25" in line,
     line,
 )
-done = subprocess.run(shlex.split(line), capture_output=True, text=True, env=env, encoding="utf-8")
+# the line is quoted for the shell it was made for: cmd rules on Windows (a POSIX split would eat the backslashes of the path)
+done = subprocess.run(
+    line if os.name == "nt" else shlex.split(line), capture_output=True, text=True, env=env, encoding="utf-8"
+)
 out = done.stdout[: done.stdout.index("\n(results")] if "\n(results" in done.stdout else done.stdout
 ok = done.returncode == 0 and json.loads(out)["status"] == "COMPLETE" and "3.75" in out
 expect("copied_line_gives_the_same_result", ok, (done.returncode, done.stderr[-300:], out[-300:]))

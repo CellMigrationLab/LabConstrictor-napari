@@ -1,34 +1,67 @@
-# First run still pending. Linux under Xvfb is what was tested by hand; Windows/macOS results are unknown until it runs.
 name: ci
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 3 * * *"   # nightly, so main is re-checked against new napari/Qt releases
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}   # never cancel a run on main
+# Qt backends (issue #41): Linux tests PyQt6 and PySide6, one isolated environment each (never both bindings in one process; napari's
+# own extras carry its exclusions: Qt 6.11.0 and 6.11.1 at napari 0.9.2). Windows and macOS test PySide6 and PyQt6 as well, plus the
+# no Qt5 jobs (napari deprecated PyQt5 in 0.8.0). Python 3.11 is the tested baseline (napari 0.8+ needs 3.11+).
 jobs:
-  test:
+  test-linux:
+    needs: lint   # a lint failure costs one runner instead of the GUI jobs
+    timeout-minutes: 45
+    name: test (ubuntu, ${{ matrix.qt }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.11"]
-    runs-on: ${{ matrix.os }}
+        qt: [pyqt6, pyside6]
+    runs-on: ubuntu-latest
+    env:
+      LC_EXPECT_QT: ${{ matrix.qt == 'pyqt6' && 'PyQt6' || 'PySide6' }}   # tests/test_qt_backend.py fails if qtpy picked another binding
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "${{ matrix.python }}" }
-      - name: Qt libraries (Linux)
-        if: runner.os == 'Linux'
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: pyproject.toml }
+      - name: Qt libraries
         run: sudo apt-get update && sudo apt-get install -y xvfb libegl1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
-      - name: Private virtualenv (Linux)
-        if: runner.os == 'Linux'
+      - name: Private virtualenv
         # the runner's own Python folder and binary are world-writable, which the tools registry refuses by design: use a private copy, not a symlink
         run: python -m venv --copies "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test]"
-      - name: Tests (Linux)
-        if: runner.os == 'Linux'
+      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-${{ matrix.qt }}]"
+      - run: pip list | grep -i -E "^(napari|PyQt|PySide|QtPy|shiboken|magicgui) "
+      - name: Tests
         working-directory: tests
         run: |
-          python test_units.py
-          xvfb-run -a python test_widget.py
-          xvfb-run -a python test_file_sources.py
-          xvfb-run -a python test_run_state.py
+          # every script in tests/ (a new test is picked up without editing this file); all run, then the job fails if any did
+          status=0
+          for t in test_*.py; do echo "::group::$t"; xvfb-run -a python "$t" || { echo "FAILED: $t"; status=1; }; echo "::endgroup::"; done
+          exit $status
+  test-desktop:
+    needs: lint   # a lint failure costs one runner instead of the GUI jobs
+    timeout-minutes: 45
+    name: test (${{ matrix.os }}, ${{ matrix.qt }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        qt: [pyside6, pyqt6]
+        python: ["3.11"]
+    runs-on: ${{ matrix.os }}
+    env:
+      LC_EXPECT_QT: ${{ matrix.qt == 'pyqt6' && 'PyQt6' || 'PySide6' }}   # tests/test_qt_backend.py fails if qtpy picked another binding
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}", cache: pip, cache-dependency-path: pyproject.toml }
+      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-${{ matrix.qt }}]"
+      - run: pip list | grep -i -E "^(napari|PyQt|PySide|QtPy|shiboken|magicgui) "
+        shell: bash
       - name: Mesa llvmpipe software OpenGL (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -46,32 +79,38 @@ jobs:
           echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
           echo "QT_OPENGL=desktop" >> "$GITHUB_ENV"
       - name: Tests (Windows/macOS)
-        if: runner.os != 'Linux'
         shell: bash
         working-directory: tests
         run: |
           # macOS: Qt software rendering; Windows: QT_OPENGL=desktop was exported by the Mesa step (empty values are invalid)
           if [ "$RUNNER_OS" = "macOS" ]; then export QT_OPENGL=software; fi
-          python test_units.py
-          python test_widget.py
-          python test_file_sources.py
+          # every script in tests/ except test_run_state.py on Windows, which sends signals with kill -9 and looks for worker processes with pgrep (POSIX only)
+          status=0
+          for t in test_*.py; do
+            [ "$t" = test_run_state.py ] && [ "$RUNNER_OS" = Windows ] && continue
+            echo "::group::$t"; python "$t" || { echo "FAILED: $t"; status=1; }; echo "::endgroup::"
+          done
+          exit $status
   lint:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: pyproject.toml }
       - run: pip install black==26.10.0 ruff==0.16.10
       - run: black --check . && ruff check .
   typecheck:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      # the real napari, magicgui and Qt (PyQt5) are installed on purpose, so mypy checks our calls against their typed signatures;
-      # nothing is run and no display is needed. The pins are the versions the code was checked against: raise them together
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: pyproject.toml }
+      # the real napari, magicgui and Qt (PyQt6, the recommended backend) are installed on purpose, so mypy checks our calls against
+      # their typed signatures; nothing is run and no display is needed. napari[pyqt6] brings PyQt6 and its Qt exclusions.
+      # The pins are the versions the code was checked against: raise them together
       - run: >
-          pip install mypy==1.20.2 napari==0.9.2 magicgui==0.10.2 PyQt5==5.15.11 qtpy==2.4.3
+          pip install mypy==1.20.2 "napari[pyqt6]==0.9.2" magicgui==0.10.2 qtpy==2.4.3
           "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e .
       - run: mypy napari_labconstrictor

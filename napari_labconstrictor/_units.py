@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from labconstrictor_tools import log
 from pint.errors import PintError
@@ -94,7 +94,9 @@ def microns_yx_from_tiff_checked(path: str | Path) -> tuple[tuple[float, float] 
 
     try:
         with tifffile.TiffFile(str(path)) as tif:
-            tags = tif.pages[0].tags
+            tags = cast(
+                tifffile.TiffPage, tif.pages[0]
+            ).tags  # the first page of a TIFF is a full page, not a TiffFrame
             x = _tag_pixel(tags, "XResolution")
             if x is None:
                 return None, None
