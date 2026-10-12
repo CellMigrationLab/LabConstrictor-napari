@@ -19,7 +19,7 @@ test-pyqt6 = ["napari[pyqt6]", "pandas", "scipy", "imageio"]      # recommended
 test-pyside6 = ["napari[pyside6]", "pandas", "scipy", "imageio"]  # recommended
 
 [project.urls]
-Repository = "https://github.com/CellMigrationLab/napari-labconstrictor"
+Repository = "https://github.com/CellMigrationLab/LabConstrictor-napari"
 
 [project.entry-points."napari.manifest"]
 napari-labconstrictor = "napari_labconstrictor:napari.yaml"
