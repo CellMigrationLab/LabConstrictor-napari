@@ -8,11 +8,16 @@ version = "0.1.0"
 description = "Run installed LabConstrictor apps from napari (one generic widget, forms generated from each tool's schema)"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"   # napari 0.8+ needs 3.11+; this is the tested baseline (CI: 3.11). Python 3.10 means napari < 0.8: not tested here
 dependencies = ["labconstrictor-tools>=0.1", "napari", "magicgui", "qtpy", "numpy", "tifffile", "pint"]
 
 [project.optional-dependencies]
-test = ["napari[pyqt5]", "pandas", "scipy", "imageio"]   # a Qt backend, and what the example app needs
+# The plugin itself installs NO Qt backend (it uses qtpy, so it works with the user's napari). The GUI tests need exactly one,
+# chosen explicitly; install one of these extras per environment, never two (never both Qt6 bindings in one process).
+# napari's own extras carry its exclusions (Qt 6.11.0 and 6.11.1 are excluded at napari 0.9.2).
+test-pyqt6 = ["napari[pyqt6]", "pandas", "scipy", "imageio"]      # recommended
+test-pyside6 = ["napari[pyside6]", "pandas", "scipy", "imageio"]  # recommended
+test-pyqt5 = ["napari[pyqt5]", "pandas", "scipy", "imageio"]      # DEPRECATED legacy (napari deprecated PyQt5 in 0.8.0); retire with napari's Qt5 removal
 
 [project.urls]
 Repository = "https://github.com/CellMigrationLab/napari-labconstrictor"
@@ -32,7 +37,7 @@ target-version = ["py311"]
 
 [tool.ruff]
 line-length = 110
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "BLE", "S", "SIM", "RUF"]
@@ -47,7 +52,7 @@ ignore = ["E501", "UP031", "UP032", "B905"]
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true   # pint, tifffile and labconstrictor_tools ship no usable stubs (napari, magicgui, qtpy are installed and typed)
 check_untyped_defs = true
 warn_unused_ignores = true

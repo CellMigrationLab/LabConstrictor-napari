@@ -8,12 +8,16 @@ dependencies coexist.
 ![widget](docs/screenshot.png)
 
 ## Install
-In the napari environment (Python >= 3.10):
+In the napari environment (**Python >= 3.11**: napari 0.8 and later need it; this plugin is tested with napari 0.9 on Python 3.11):
 
     pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/heads/main.zip      # the runtime (not on PyPI yet)
     pip install https://github.com/CellMigrationLab/napari-labconstrictor/archive/refs/heads/main.zip
 
 (Source archives: no `git` program is needed. With git you can use `git+https://github.com/CellMigrationLab/<repository>` instead.)
+
+The plugin installs no Qt backend (it uses `qtpy`, so it runs on the one your napari has). If you install napari yourself, choose a
+**Qt6** backend: `pip install "napari[pyqt6]"` or `pip install "napari[pyside6]"` (both tested here on Linux). **PyQt5 is deprecated**
+by napari since 0.8.0 (14 July 2026), which plans to drop Qt5 support; it still works for now, but do not start new environments with it.
 
 Then **Plugins > LabConstrictor tools**. The widget lists the apps registered on this machine (the LabConstrictor installer
 registers each app; for a manual registration see the Tools repository: `labconstrictor-tools register ...`).
@@ -33,7 +37,9 @@ registers each app; for a manual registration see the Tools repository: `labcons
   Every run also leaves `~/.labconstrictor/runs/<time>_<app>_<tool>/run.json`.
 
 ## Development and tests
-    pip install -e ".[test]"                       # also install labconstrictor-tools (see above)
+    pip install -e ".[test-pyqt6]"                 # also install labconstrictor-tools (see above). ONE Qt backend per environment:
+    pip install -e ".[test-pyside6]"               #   test-pyqt6 or test-pyside6 (recommended), never both in one environment
+    pip install -e ".[test-pyqt5]"                 #   DEPRECATED legacy (Windows/macOS CI until their Qt6 jobs exist); to be retired
     cd tests
     python test_units.py
     QT_QPA_PLATFORM=offscreen python test_results_and_workers.py   # per-axis calibration, result display limits, worker cache
@@ -57,13 +63,19 @@ registers each app; for a manual registration see the Tools repository: `labcons
     xvfb-run -a python test_parity_results.py      # outline cap counts features; the sentence for a result type this version does not know
     xvfb-run -a python test_parity_region.py       # RegionOf: refused for an image given as a file; at most 65 535 shapes, 16 bit
     xvfb-run -a python test_parity_points_frame.py # points/outlines without apply_to go on the first image input
+    xvfb-run -a python test_qt_backend.py          # Plugins menu entry opens the dock; scrolling, results table dock, status, Details dialog on this Qt binding
+    scripts/check_qt_backend.sh pyqt6|pyside6      # the same in a brand-new virtualenv with only that backend (Linux, needs xvfb-run)
     python test_harness_exit.py                    # a test script's exit code still carries its verdict (os._exit in tests/_paths.py)
 
-CI runs every `tests/test_*.py` (a loop, not a list). Each script leaves through `os._exit` (`tests/_paths.py`): PyQt5's own exit
-handler (`_qtcore_cleanup`) crashes the interpreter now and then with a napari window open (about 1 run in 10 on Linux; faulthandler shows
-the stack), after the verdict is printed. This is a test-harness measure only (the exit code still carries the verdict, see
-`tests/test_harness_exit.py`). napari's PyQt5 backend is deprecated: the move to Qt6 (issue #41) must remove `_leave` from
-`tests/_paths.py` and let the scripts exit normally again.
+CI runs every `tests/test_*.py` (a loop, not a list): on Linux in two separate environments, PyQt6 and PySide6 (`LC_EXPECT_QT`
+makes `test_qt_backend.py` fail if the wrong binding was loaded). Windows and macOS still run the deprecated PyQt5 until a later pull
+request adds Qt6 jobs there (issue #41 stays open for them).
+
+Under a PyQt binding each script leaves through `os._exit` (`tests/_paths.py`): PyQt's own exit handler crashes the interpreter with a
+napari window open, after the verdict is printed. Measured on Linux (napari 0.9.2): PyQt5 about 1 run in 10, **PyQt6 6.11 still
+crashes (37 of 60 runs of `test_parity_region.py`)**, PySide6 6.12 did not (0 of 60), so PySide6 exits normally. This is a test-harness
+measure only (the exit code still carries the verdict, see `tests/test_harness_exit.py`). To re-check after a PyQt6 update, remove
+the `sys.exit = _leave` line and loop one script ~60 times.
 
 The tests register the example app shipped with `labconstrictor-tools` (`labconstrictor_tools.examples.synthetic`) in a private
 registry, so no real LabConstrictor app is needed. Real apps are tested in their own repositories.
@@ -71,5 +83,5 @@ registry, so no real LabConstrictor app is needed. Real apps are tested in their
 Layout: `napari_labconstrictor/` = `_widget.py` (the dock widget), `_schema.py` (schema -> magicgui signature), `_results.py`,
 `_units.py`, `_workers.py` (worker cache), `napari.yaml` (npe2 manifest).
 
-Status: **testing phase**. Tested on Linux (Qt5, napari 0.9) under Xvfb. Windows and macOS are untested: to help, follow the
+Status: **testing phase**. Tested on Linux (PyQt6 and PySide6, napari 0.9) under Xvfb; Windows and macOS only with the deprecated PyQt5 so far, and those runs are new: to help, follow the
 [human test protocol](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/HUMAN_TEST_PROTOCOL.md). License: MIT.
