@@ -6,12 +6,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import napari
 import numpy as np
 from _paths import EVIDENCE
 from qtpy.QtWidgets import QApplication
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 tools = Path(tempfile.mkdtemp(prefix="lcwidgets_"))
 (tools / "widgets_lc_tools.py").write_text(
@@ -38,14 +42,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def until(condition, timeout=60):
+def until(condition: "Callable[[], object]", timeout: float = 60) -> None:
     end = time.time() + timeout
     while not condition() and time.time() < end:
         qa.processEvents()
@@ -53,7 +57,7 @@ def until(condition, timeout=60):
     pump(0.3)
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))

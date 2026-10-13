@@ -6,6 +6,7 @@ case below changes something while the run is going (a gate file holds the tool)
 
 import dataclasses
 import uuid
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import _runtools as R
@@ -14,6 +15,12 @@ from _harness import expect, finish, pump, viewer, widget
 from labconstrictor_tools import conformance
 
 from napari_labconstrictor import _snapshot, _widget
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from typing import Any
+
+    from napari.layers import Image
 
 w = widget
 C = conformance.load()
@@ -32,7 +39,9 @@ expect(
 expect("target_unavailable_is_a_host_internal_code", _snapshot.TARGET_UNAVAILABLE in C["host_internal_codes"])
 
 
-def fresh(scale_a=(2.0, 2.0), scale_b=(5.0, 5.0)):
+def fresh(
+    scale_a: tuple[float, float] = (2.0, 2.0), scale_b: tuple[float, float] = (5.0, 5.0)
+) -> "tuple[Image, Image]":
     viewer.layers.clear()
     pump(0.2)
     a = viewer.add_image(np.ones((8, 8), np.uint8), name="A", scale=scale_a)
@@ -40,7 +49,7 @@ def fresh(scale_a=(2.0, 2.0), scale_b=(5.0, 5.0)):
     return a, b
 
 
-def start_on(layer, tool="Gated points"):
+def start_on(layer: "Image", tool: str = "Gated points") -> "Path":
     """Start the delayed tool on `layer`; returns the gate that releases it once the worker is running."""
     R.pick(tool)
     w.gui.image.value = layer
@@ -52,18 +61,18 @@ def start_on(layer, tool="Gated points"):
     return gate
 
 
-def drawn(run_id=None):
+def drawn(run_id: str | None = None) -> "list[Any]":
     out = [layer for layer in viewer.layers if layer.name.startswith("runapp:")]
     if run_id is not None:
         out = [layer for layer in out if layer.metadata.get("labconstrictor", {}).get("run_id") == run_id]
     return out
 
 
-def points_of(run_id):
+def points_of(run_id: str) -> "Any":
     return next((layer for layer in drawn(run_id) if layer.name.startswith("runapp:spots")), None)
 
 
-def newest_results():
+def newest_results() -> "Path":
     return R.folders("results")[-1]
 
 
@@ -87,7 +96,7 @@ except dataclasses.FrozenInstanceError:
 expect("snapshot_is_frozen", not changed)
 
 
-def assign(mapping, key):
+def assign(mapping: "dict[str, Any]", key: str) -> None:
     mapping[key] = "x"  # a read-only mapping refuses this with a TypeError
 
 
@@ -225,7 +234,7 @@ w.region_toggles["region"].value = True
 real_export = _widget.export_layer
 
 
-def tampering(layer, picked, path):
+def tampering(layer: "Image", picked: "Any", path: "Path") -> None:
     real_export(layer, picked, path)
     shapes.data = [
         np.array([[20.5, 20.5], [20.5, 24.5], [24.5, 24.5], [24.5, 20.5]])

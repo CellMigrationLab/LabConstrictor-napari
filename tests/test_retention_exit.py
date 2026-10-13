@@ -13,6 +13,7 @@ the outcome; the timer only opens the gate while the code under test is waiting.
 import subprocess
 import sys
 import threading
+from typing import TYPE_CHECKING
 
 import _async
 import _paths  # noqa: F401  (must come first)
@@ -20,6 +21,9 @@ from _harness import expect, finish, pump, viewer
 from _harness import widget as w
 
 from napari_labconstrictor import LabConstrictorWidget, _retention
+
+if TYPE_CHECKING:
+    from typing import Any
 
 _async.register("exitapp")
 w.rescan()
@@ -33,7 +37,7 @@ made = []  # every subprocess that was really made, in order
 class GatedPopen(real_popen):
     """The `prune` watcher holds here, inside the start of the subprocess, until the test opens the gate."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: "Any", **kwargs: "Any") -> None:
         is_prune = list(args[0]) in PRUNE_ARGVS  # the workers of the widget start through this class too
         if is_prune:
             entered.set()
@@ -51,13 +55,13 @@ _retention.prune_argv = lambda python: list(PRUNE_ARGV)
 SCHEMA = {"features": [_retention.PRUNE_FEATURE]}
 
 
-def reset():
+def reset() -> None:
     entered.clear()
     gate.clear()
     made.clear()
 
 
-def opened_soon():
+def opened_soon() -> "Any":
     """Open the gate while the code under test is waiting for the start (a timer, never what decides the result)."""
     timer = threading.Timer(0.5, gate.set)
     timer.start()

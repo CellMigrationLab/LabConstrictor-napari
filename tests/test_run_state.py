@@ -53,14 +53,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def wait(timeout=60):
+def wait(timeout: float = 60) -> "Any":
     end = time.time() + timeout
     while (w.last_task is None or w.task is not w.last_task) and time.time() < end:
         qa.processEvents()
@@ -69,20 +69,20 @@ def wait(timeout=60):
     return w.last_task
 
 
-def pick(app, label):
+def pick(app: str, label: str) -> None:
     w.app_box.value = app
     pump(0.1)
     w.tool_box.value = label
     pump(0.3)
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
 
 
-def workers():
+def workers() -> list[str]:
     """Worker processes started by THIS test (children of this process): a machine-wide search would also find, and kill,
     the workers of any other napari or test running at the same time."""
     return subprocess.run(
@@ -153,6 +153,10 @@ expect("forced_kill_not_blamed_on_oom", "out of memory" not in w.last_task.error
 # 6. the export cap is enforced with a readable message (a 4.9 GB virtual array: nothing is allocated)
 from pathlib import Path as _P  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 pick("other", "Image stats")
 huge = SimpleNamespace(data=np.broadcast_to(np.uint8(0), (70000, 70000)), name="huge", multiscale=False)

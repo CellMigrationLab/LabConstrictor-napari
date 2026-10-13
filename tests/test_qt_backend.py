@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import time
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import napari
@@ -20,10 +21,15 @@ from _paths import EVIDENCE
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QApplication, QMenu, QMessageBox, QScrollArea
 
+if TYPE_CHECKING:
+    from typing import Any
+
+    from qtpy.QtGui import QAction
+
 report, failures = {}, []
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
@@ -44,14 +50,16 @@ v.window.resize(1500, 950)
 qa = QApplication.instance()
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def find_actions(menu, text, path=()):
+def find_actions(
+    menu: QMenu, text: str, path: tuple[str, ...] = ()
+) -> "list[tuple[tuple[str, ...], QAction]]":
     """Every action whose label starts with `text` in `menu` and its submenus, with the menu path leading to it.
     napari labels a widget entry "<widget> (<plugin display name>)"."""
     found = []
@@ -85,7 +93,7 @@ w = next(iter(docks.values()))
 expect("dock_holds_the_labconstrictor_widget", hasattr(w, "details_button"), type(w))
 
 
-def wait(timeout=120):
+def wait(timeout: float = 120) -> "Any":
     end = time.time() + timeout
     while (w.last_task is None or w.task is not w.last_task) and time.time() < end:
         qa.processEvents()
@@ -94,13 +102,13 @@ def wait(timeout=120):
     return w.last_task
 
 
-def run():
+def run() -> "Any":
     w.last_task = None
     w.gui()
     return wait()
 
 
-def pick(app, label):
+def pick(app: str, label: str) -> None:
     w.app_box.value = app
     pump(0.1)
     w.tool_box.value = label
@@ -164,7 +172,7 @@ expect(
 seen = {}
 
 
-def inspect_dialog():
+def inspect_dialog() -> None:
     box = qa.activeModalWidget()
     seen["is_message_box"] = isinstance(box, QMessageBox)
     if isinstance(box, QMessageBox):

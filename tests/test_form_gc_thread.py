@@ -11,26 +11,30 @@ in 10 of 12 runs of the loop below with `gc.collect()` in a thread).
 
 import gc
 import threading
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import qtpy
 from _numhelpers import choose, expect, finish, pump, until, w
 from qtpy.QtCore import QCoreApplication, QEvent, Qt
 
+if TYPE_CHECKING:
+    from qtpy.QtWidgets import QWidget
+
 deleted_by = []
 
 
-def note_deletion(*_):
+def note_deletion(*_: object) -> None:
     deleted_by.append(threading.current_thread().name)
 
 
-def collect_in_a_thread():
+def collect_in_a_thread() -> None:
     thread = threading.Thread(target=gc.collect, name="collector")
     thread.start()
     thread.join()
 
 
-def python_owns(widget):
+def python_owns(widget: "QWidget") -> bool:
     """Does Python own the C++ object (so that freeing the wrapper, in any thread, deletes the widget)?"""
     if qtpy.API_NAME.startswith("PySide"):
         import shiboken6
@@ -64,7 +68,7 @@ expect("the GUI thread deletes it", deleted_by == [threading.main_thread().name]
 stop = threading.Event()
 
 
-def collect_all_the_time():
+def collect_all_the_time() -> None:
     while not stop.is_set():
         gc.collect()
         stop.wait(0.001)

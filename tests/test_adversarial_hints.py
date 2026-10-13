@@ -72,14 +72,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def until(cond, timeout=60):
+def until(cond: "Callable[[], object]", timeout: float = 60) -> None:
     end = time.time() + timeout
     while not cond() and time.time() < end:
         qa.processEvents()
@@ -87,13 +87,13 @@ def until(cond, timeout=60):
     pump(0.3)
 
 
-def expect(name, ok, detail=""):
+def expect(name: str, ok: object, detail: object = "") -> None:
     report[name] = bool(ok)
     if not ok:
         failures.append("%s %s" % (name, detail))
 
 
-def run():
+def run() -> None:
     w.last_task = None
     w.gui()
     until(lambda: w.last_task is not None and w.task is w.last_task)
@@ -180,9 +180,14 @@ expect(
     w.last_task.status == "COMPLETE" and w._docks[("adv", "pts")].rowCount() == 5000,
     w.status.text(),
 )
+from typing import TYPE_CHECKING
+
 import numpy as np  # noqa: E402
 
 from napari_labconstrictor._results import ResultPresenter  # noqa: E402
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 source = v.add_image(np.zeros((8, 8)), name="adv_source")
 csv_path = tools / "fifty_thousand.csv"

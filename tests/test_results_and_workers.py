@@ -21,7 +21,7 @@ _qt = QApplication.instance() or QApplication([])
 
 
 class Calibration(unittest.TestCase):
-    def test_a_layer_with_different_y_and_x_scale_is_unknown_and_says_so(self):
+    def test_a_layer_with_different_y_and_x_scale_is_unknown_and_says_so(self) -> None:
         # SPEC_WRONG_SCIENCE 2.1.5 supersedes "the tool gets X and the person is told": the scalar field is never filled from one axis
         layer = Image(np.zeros((4, 4)), scale=(0.5, 0.25), units=("micrometer", "micrometer"))
         calibration = _units.calibration_of_layer(layer)
@@ -31,12 +31,12 @@ class Calibration(unittest.TestCase):
             calibration.yx, (0.5, 0.25)
         )  # both axes are still known (a result is placed with them)
 
-    def test_square_pixels_give_no_warning(self):
+    def test_square_pixels_give_no_warning(self) -> None:
         layer = Image(np.zeros((4, 4)), scale=(0.325, 0.325), units=("micrometer", "micrometer"))
         self.assertIsNone(_units.calibration_of_layer(layer).note)
         self.assertEqual(_units.calibration_of_layer(layer).value, 0.325)
 
-    def test_a_tiff_with_different_y_and_x_resolution_keeps_both(self):
+    def test_a_tiff_with_different_y_and_x_resolution_keeps_both(self) -> None:
         path = Path(tempfile.mkdtemp()) / "a.tif"
         tifffile.imwrite(
             path, np.zeros((4, 4), np.uint8), imagej=True, resolution=(4.0, 2.0), metadata={"unit": "um"}
@@ -45,7 +45,7 @@ class Calibration(unittest.TestCase):
         self.assertEqual(_units.microns_from_tiff(path), 0.25)
         self.assertEqual(_results.FileInput(path).scale, (0.5, 0.25))  # not 0.25 twice
 
-    def test_a_file_without_calibration_is_uncalibrated(self):
+    def test_a_file_without_calibration_is_uncalibrated(self) -> None:
         path = Path(tempfile.mkdtemp()) / "b.tif"
         tifffile.imwrite(path, np.zeros((4, 4), np.uint8))
         self.assertIsNone(_units.microns_yx_from_tiff(path))
@@ -53,12 +53,12 @@ class Calibration(unittest.TestCase):
 
 
 class Schema(unittest.TestCase):
-    def test_an_unknown_parameter_type_is_refused_not_turned_into_a_float(self):
+    def test_an_unknown_parameter_type_is_refused_not_turned_into_a_float(self) -> None:
         with self.assertRaises(ValueError) as caught:
             _schema._annotation({"name": "x", "type": "imagge"}, {})
         self.assertIn("imagge", str(caught.exception))
 
-    def test_a_number_without_bounds_is_not_capped_at_a_billion(self):
+    def test_a_number_without_bounds_is_not_capped_at_a_billion(self) -> None:
         _, options = _schema._annotation({"name": "n", "type": "integer"}, {})
         self.assertGreaterEqual(options["max"], 2_000_000_000)
         self.assertEqual(_schema._annotation({"name": "n", "type": "integer", "maximum": 7}, {})[1]["max"], 7)
@@ -67,7 +67,7 @@ class Schema(unittest.TestCase):
 
 
 class Presenter(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.shown = []
         viewer = SimpleNamespace(
             add_image=lambda data, **kw: self.shown.append(("image", data.shape)),
@@ -79,12 +79,12 @@ class Presenter(unittest.TestCase):
         self.presenter = _results.ResultPresenter(viewer, "app", {})
         self.dir = Path(tempfile.mkdtemp())
 
-    def test_a_malformed_result_does_not_crash_the_error_handler(self):
+    def test_a_malformed_result_does_not_crash_the_error_handler(self) -> None:
         for bad in ({}, {"name": "x"}, None, [1], {"type": "nonsense"}):
             text = self.presenter.show(bad)
             self.assertTrue(text.startswith(_results.COULD_NOT_DISPLAY), (bad, text))
 
-    def test_a_missing_output_file_is_not_presented_as_a_result(self):
+    def test_a_missing_output_file_is_not_presented_as_a_result(self) -> None:
         text = self.presenter.show({"type": "file", "name": "report", "path": str(self.dir / "gone.txt")})
         self.assertTrue(text.startswith(_results.COULD_NOT_DISPLAY))
         self.assertIn("does not exist", text)
@@ -94,7 +94,7 @@ class Presenter(unittest.TestCase):
             self.presenter.show({"type": "file", "name": "r", "path": str(existing)}), "file: %s" % existing
         )
 
-    def test_an_image_larger_than_the_limit_is_refused_before_loading(self):
+    def test_an_image_larger_than_the_limit_is_refused_before_loading(self) -> None:
         path = self.dir / "big.tif"
         tifffile.imwrite(path, np.zeros((64, 64), np.uint16))
         with mock.patch.object(_results, "MAX_DISPLAY_BYTES", 1000), mock.patch("tifffile.imread") as read:
@@ -105,12 +105,12 @@ class Presenter(unittest.TestCase):
         self.assertEqual(self.presenter.show({"type": "image", "name": "ok", "path": str(path)}), "")
         self.assertEqual(self.shown, [("image", (64, 64))])
 
-    def test_a_table_dock_the_user_closed_is_logged_and_replaced(self):
+    def test_a_table_dock_the_user_closed_is_logged_and_replaced(self) -> None:
         path = self.dir / "r.csv"
         path.write_text("a\n1\n")
         presenter = _results.ResultPresenter(self.presenter.viewer, "app", {}, {"r"}, {})
 
-        def gone(widget):
+        def gone(widget: object) -> None:
             raise LookupError("Could not find a dock widget")
 
         presenter.viewer.window.remove_dock_widget = gone
@@ -121,7 +121,7 @@ class Presenter(unittest.TestCase):
         self.assertEqual(text, "table 'r' (1 rows)")
         self.assertEqual(self.shown.count(("dock", 1)), 2)
 
-    def test_a_huge_table_shows_a_bounded_number_of_rows_and_says_so(self):
+    def test_a_huge_table_shows_a_bounded_number_of_rows_and_says_so(self) -> None:
         path = self.dir / "t.csv"
         path.write_text("a,b\n" + "".join("%d,%d\n" % (i, i) for i in range(10)))
         with mock.patch.object(_results, "MAX_TABLE_ROWS", 3):
@@ -133,27 +133,27 @@ class Presenter(unittest.TestCase):
 
 
 class FakeWorker:
-    def __init__(self, app=None):
+    def __init__(self, app: str | None = None) -> None:
         self.alive, self.closed = True, False
 
-    def close(self, timeout=0):
+    def close(self, timeout: float = 0) -> None:
         self.alive, self.closed = False, True
 
 
 class WorkerCache(unittest.TestCase):
-    def cache(self):
+    def cache(self) -> _workers.WorkerCache:
         with mock.patch.object(_workers.atexit, "register"):
             cache = _workers.WorkerCache()
         return cache
 
-    def test_close_all_also_closes_a_worker_that_is_running_a_task(self):
+    def test_close_all_also_closes_a_worker_that_is_running_a_task(self) -> None:
         cache = self.cache()
         with mock.patch.object(_workers.client, "WorkerProcess", FakeWorker):
             running = cache.acquire("app")
         cache.close_all()
         self.assertTrue(running.closed)
 
-    def test_two_workers_released_for_one_app_do_not_leak_the_first(self):
+    def test_two_workers_released_for_one_app_do_not_leak_the_first(self) -> None:
         cache = self.cache()
         with mock.patch.object(_workers.client, "WorkerProcess", FakeWorker):
             first = cache.acquire("app")
@@ -166,7 +166,7 @@ class WorkerCache(unittest.TestCase):
         cache.close_all()
         self.assertTrue(second.closed)
 
-    def test_a_released_worker_is_no_longer_active_and_is_reused(self):
+    def test_a_released_worker_is_no_longer_active_and_is_reused(self) -> None:
         cache = self.cache()
         with mock.patch.object(_workers.client, "WorkerProcess", FakeWorker):
             worker = cache.acquire("app")

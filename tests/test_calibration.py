@@ -7,6 +7,8 @@ A napari layer only holds units pint can parse, so every unit TEXT of the fixtur
 it does in practice: as the unit of an OME-TIFF, which keeps the text exactly; a layer is used as well wherever pint accepts the text.
 """
 
+from typing import TYPE_CHECKING
+
 import _paths  # noqa: F401  (must come first)
 from _calhelpers import (
     CAL,
@@ -26,9 +28,19 @@ from _calhelpers import (
 )
 from napari.layers import Image
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
 
 # ---- the cases of conformance.json, through the form -----------------------------------------------------------------------------
-def scenario(tag, build, expected, warning=None, source="image"):
+def scenario(
+    tag: str,
+    build: "tuple[str, Any]",
+    expected: float | str,
+    warning: str | None = None,
+    source: str = "image",
+) -> None:
     fresh(rebuild=False)  # nothing is typed here: the source alone decides, so the form is reused
     kind, thing = build
     if kind == "layer":
@@ -42,7 +54,14 @@ def scenario(tag, build, expected, warning=None, source="image"):
         check_known(tag, expected, source)
 
 
-def layer_scenarios(ident, scale, unit, expected, warning=None, suffix=""):
+def layer_scenarios(
+    ident: str,
+    scale: "float | Sequence[float]",
+    unit: str | list[str] | tuple[str, ...],
+    expected: float | str,
+    warning: str | None = None,
+    suffix: str = "",
+) -> None:
     """One source text, every way it can arrive: as the units of a napari layer (when pint accepts it) and as an OME-TIFF given as a file."""
     unit = unit[0] if isinstance(unit, list | tuple) else unit
     layer = pint_layer(scale, unit)

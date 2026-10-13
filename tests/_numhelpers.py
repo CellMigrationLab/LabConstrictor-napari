@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 from _harness import expect, finish, pump, until, viewer  # noqa: F401
@@ -14,6 +15,9 @@ from _harness import widget as w
 from labconstrictor_tools import conformance
 from qtpy.QtCore import Qt
 from qtpy.QtTest import QTest
+
+if TYPE_CHECKING:
+    from typing import Any
 
 C = conformance.load()
 NUM = {case["id"]: case for case in C["wrong_science"]["number_limits"]["cases"]}
@@ -30,15 +34,15 @@ subprocess.run(
 w.rescan()
 
 
-def above(label, maximum):
+def above(label: str, maximum: float) -> str:
     return "⚠ " + MESSAGES["number_above_maximum"]["template"].format(label=label, maximum=maximum)
 
 
-def below(label, minimum):
+def below(label: str, minimum: float) -> str:
     return "⚠ " + MESSAGES["number_below_minimum"]["template"].format(label=label, minimum=minimum)
 
 
-def choose(tool):
+def choose(tool: str) -> None:
     """The form of `tool`, built afresh (a form that is already showing is left first, so no typed text or ticked box carries over)."""
     w.app_box.value = "numapp"
     pump(0.1)
@@ -49,7 +53,7 @@ def choose(tool):
     pump(0.3)
 
 
-def type_text(name, text):
+def type_text(name: str, text: str) -> None:
     """The person selects the box, types `text` key by key and presses Enter: Qt's own edit signals fire, nothing is set from code."""
     edit = w.gui[name].native
     edit.setFocus()
@@ -64,14 +68,14 @@ def type_text(name, text):
     QTest.keyClick(edit, Qt.Key.Key_Return)
 
 
-def paste_text(name, text):
+def paste_text(name: str, text: str) -> None:
     """Pasted or dropped text: set as a whole into the box's line edit, the way the clipboard arrives."""
     edit = w.gui[name].native
     edit.selectAll()
     edit.insert(text)
 
 
-def request():
+def request() -> "tuple[Any, str | None]":
     """(inputs, None) the form would send to the worker, or (None, the status sentence) when the click refuses (the first half of a click)."""
     seen = []
     w._launch = lambda form_values: seen.append(form_values)
@@ -88,7 +92,7 @@ def request():
     return prepared[0], None
 
 
-def run():
+def run() -> "Any":
     """Press Run for real and wait for the end of the task; returns it."""
     w.last_task = None
     w.gui()
@@ -97,12 +101,12 @@ def run():
     return w.last_task
 
 
-def received():
+def received() -> str:
     """What the tool said it received (the message output), from the status or message area of the finished run."""
     return w.status.text() + "\n" + (w.message_label.text() if w.message_label.isVisible() else "")
 
 
-def sends(tag, tool, name, text, value):
+def sends(tag: str, tool: str, name: str, text: str, value: float) -> None:
     """Type `text`; the click sends exactly `value` (same type) and the box still shows the text as typed."""
     choose(tool)
     type_text(name, text)
@@ -112,7 +116,7 @@ def sends(tag, tool, name, text, value):
     expect(tag + "_text_unchanged", w.gui[name].native.text() == text, w.gui[name].native.text())
 
 
-def refuses(tag, tool, name, text, sentence):
+def refuses(tag: str, tool: str, name: str, text: str, sentence: str) -> None:
     """Type `text`; the click refuses with `sentence` (after the warning sign) and sends nothing."""
     choose(tool)
     type_text(name, text)

@@ -4,6 +4,7 @@ Not a test."""
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import numpy as np
@@ -11,33 +12,36 @@ import tifffile
 from _harness import expect, finish, pump, register, until  # noqa: F401
 from _harness import widget as w
 
+if TYPE_CHECKING:
+    from typing import Any
+
 register("interactions", "labconstrictor_tools.examples.interactions")
 WORK = Path(tempfile.mkdtemp(prefix="lcchan_"))
 
 
-def choose_channel_tool():
+def choose_channel_tool() -> None:
     w.app_box.value = "interactions"
     pump(0.2)
     w.tool_box.value = "Mean of a channel"
     pump(0.8)
 
 
-def axes_of(path):
+def axes_of(path: str | Path) -> str:
     with tifffile.TiffFile(str(path)) as tif:
         return tif.series[0].axes
 
 
-def set_file(path):
+def set_file(path: str | Path) -> None:
     w.file_sources["image"].value = Path(path)
     pump(0.4)
 
 
-def pick(name):
+def pick(name: str) -> None:
     w.channel_boxes["image"].value = name
     pump(0.1)
 
 
-def request():
+def request() -> "tuple[Any, Any]":
     """(inputs, None) the form would send, or (None, status sentence) when the click refuses: the first half of a click."""
     seen = []
     w._launch = lambda form_values: seen.append(form_values)
@@ -56,7 +60,7 @@ def request():
     return inputs, sent if sent is not None else None
 
 
-def sent_array():
+def sent_array() -> "tuple[Any, str | None]":
     """The pixels the worker would be given for the image parameter, read from the file the request names (None when refused)."""
     seen = []
     w._launch = lambda form_values: seen.append(form_values)
@@ -74,7 +78,7 @@ def sent_array():
     return array, None
 
 
-def run():
+def run() -> "Any":
     w.last_task = None
     w.gui()
     until(lambda: w.last_task is not None and w.task is w.last_task)
@@ -82,7 +86,7 @@ def run():
     return w.last_task
 
 
-def rgb_plane(height=6, width=7, dtype=np.uint8):
+def rgb_plane(height: int = 6, width: int = 7, dtype: type[np.generic] = np.uint8) -> np.ndarray:
     """Three colours with different values everywhere, so a wrong axis or a wrong colour cannot give the right pixels."""
     yy, xx = np.mgrid[0:height, 0:width]
     return np.stack([(yy * 10 + xx) + 40 * c for c in range(3)], axis=-1).astype(dtype)

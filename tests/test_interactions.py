@@ -48,14 +48,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def until(condition, timeout=60):
+def until(condition: "Callable[[], object]", timeout: float = 60) -> object:
     end = time.time() + timeout
     while not condition() and time.time() < end:
         qa.processEvents()
@@ -64,17 +64,17 @@ def until(condition, timeout=60):
     return condition()
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
 
 
-def shown(widget):
+def shown(widget: "Widget") -> bool:
     return not widget.native.isHidden()
 
 
-def run():
+def run() -> None:
     w.last_task = None
     w.gui()
     until(lambda: w.last_task is not None)
@@ -154,7 +154,14 @@ expect(
 )
 
 # 6. Replace on an affine output: two runs leave one overlay layer
+from typing import TYPE_CHECKING
+
 import numpy as np
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from magicgui.widgets import Widget
 
 v.layers.clear()
 v.add_image(np.random.default_rng(0).random((32, 32)), name="src")

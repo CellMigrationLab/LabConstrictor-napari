@@ -28,7 +28,7 @@ subprocess.run(
 )  # fmt: skip
 
 
-def _prunes_have_ended():
+def _prunes_have_ended() -> bool:
     """True when no `prune` watcher thread of the widget is left (a run that ends starts one, and closing a widget during a run ends it).
 
     Why `_leave` waits for them: `os._exit` is `ExitProcess` on Windows, and a thread that is inside `CreateProcess` at that moment (the
@@ -43,7 +43,7 @@ def _prunes_have_ended():
     return retention is None or retention.wait_idle(120)
 
 
-def _leave(code=None):
+def _leave(code: int | str | None = None) -> None:
     """`sys.exit` for a test script: the verdict is already printed and decides the exit code, so leave at once (`os._exit`).
 
     Why: running the exit handlers crashes with the PyQt bindings. PyQt6 6.11 (the latest) segfaults at exit with a napari window open:

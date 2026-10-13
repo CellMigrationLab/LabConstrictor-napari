@@ -8,7 +8,7 @@ from typing import Annotated, Optional
 from labconstrictor_tools import Axes, Image, Max, MessageOut, Min, Name, PixelSizeOf, Unit, Widget, tool
 
 
-def _said(**values) -> Annotated[MessageOut, Name("received")]:
+def _said(**values: object) -> Annotated[MessageOut, Name("received")]:
     return "; ".join("%s=%r (%s)" % (k, v, type(v).__name__) for k, v in values.items())
 
 

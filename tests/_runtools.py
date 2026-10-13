@@ -9,12 +9,18 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths
 from _harness import expect, pump, widget
 from qtpy.QtWidgets import QApplication
 
 from napari_labconstrictor import _retention
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+    from threading import Thread
+    from typing import Any
 
 HOME = _paths.HOME
 WORK = Path(tempfile.mkdtemp(prefix="lcrun_work_"))
@@ -24,7 +30,7 @@ CREATED = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$")
 _qa = QApplication.instance()
 
 
-def register_app():
+def register_app() -> None:
     import subprocess
 
     subprocess.run(
@@ -38,14 +44,14 @@ def register_app():
 register_app()
 
 
-def pick(tool_label, app=APP):
+def pick(tool_label: str, app: str = APP) -> None:
     widget.app_box.value = app
     pump(0.1)
     widget.tool_box.value = tool_label
     pump(0.4)
 
 
-def wait_done(timeout=120):
+def wait_done(timeout: float = 120) -> "Any":
     """Wait until the run that was started has ended and its results are handled (the done slot runs inside processEvents)."""
     end = time.time() + timeout
     while (widget.last_task is None or widget.task is not widget.last_task) and time.time() < end:
@@ -55,17 +61,17 @@ def wait_done(timeout=120):
     return widget.last_task
 
 
-def start():
+def start() -> None:
     widget.last_task = None
     widget.gui()
 
 
-def quick_run(timeout=120):
+def quick_run(timeout: float = 120) -> "Any":
     start()
     return wait_done(timeout)
 
 
-def wait_until(condition, timeout=60):
+def wait_until(condition: "Callable[[], object]", timeout: float = 60) -> object:
     end = time.time() + timeout
     while not condition() and time.time() < end:
         _qa.processEvents()
@@ -73,20 +79,20 @@ def wait_until(condition, timeout=60):
     return condition()
 
 
-def new_gate():
+def new_gate() -> Path:
     return WORK / ("gate_%d_%d" % (os.getpid(), time.time_ns()))
 
 
-def release(gate):
+def release(gate: str | Path) -> None:
     Path(gate).write_text("go", encoding="utf-8")
 
 
-def folders(root):
+def folders(root: str) -> list[Path]:
     base = HOME / root
     return sorted(p for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
 
 
-def text_of(path):
+def text_of(path: str | Path) -> str | None:
     """The text of a file, or None when it is gone (a failed check, not a crash)."""
     try:
         return Path(path).read_text(encoding="utf-8")
@@ -94,7 +100,7 @@ def text_of(path):
         return None
 
 
-def read_json(path):
+def read_json(path: str | Path) -> "Any":
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
@@ -121,24 +127,24 @@ RECORD = WORK / "prune_calls.jsonl"
 _real_argv = _retention.prune_argv
 
 
-def use_recorder():
+def use_recorder() -> None:
     """Replace the `prune` command by the recorder; it logs its arguments and which folders had owner / done markers when it started."""
     _retention.prune_argv = lambda python: [sys.executable, str(RECORDER), str(RECORD), *_real_argv(python)]
 
 
-def use_command(argv):
+def use_command(argv: "Sequence[str]") -> None:
     _retention.prune_argv = lambda python: list(argv)
 
 
-def use_real():
+def use_real() -> None:
     _retention.prune_argv = _real_argv
 
 
-def calls():
+def calls() -> "list[Any]":
     return [json.loads(line) for line in RECORD.read_text().splitlines()] if RECORD.exists() else []
 
 
-def join_prune(timeout=120):
+def join_prune(timeout: float = 120) -> "Thread":
     thread = widget.last_prune
     if thread is not None:
         thread.join(timeout)
@@ -146,7 +152,7 @@ def join_prune(timeout=120):
 
 
 # ------------------------------------------------------------------ markers
-def valid_owner(folder, kind, markers):
+def valid_owner(folder: str | Path, kind: str, markers: "dict[str, Any]") -> list[str]:
     """The owner marker of `folder` against the field list of conformance.json; returns (problems)."""
     problems = []
     path = Path(folder) / markers["owner_file"]
@@ -172,7 +178,7 @@ def valid_owner(folder, kind, markers):
     return problems
 
 
-def done_status(folder, markers):
+def done_status(folder: str | Path, markers: "dict[str, Any]") -> str | None:
     """The status in `.lc-done.json` of `folder`; None when there is no done file; 'INVALID' when its fields are wrong."""
     path = Path(folder) / markers["done_file"]
     if not path.is_file():
@@ -185,7 +191,9 @@ def done_status(folder, markers):
     return data["status"]
 
 
-def make_owned(root, kind, count, prefix, done=True, base_year=2020):
+def make_owned(
+    root: str | Path, kind: str, count: int, prefix: str, done: bool = True, base_year: int = 2020
+) -> None:
     import json
 
     for i in range(count):

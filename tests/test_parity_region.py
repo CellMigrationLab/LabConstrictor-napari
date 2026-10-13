@@ -4,6 +4,7 @@ QuPath; the label image is 16 bit like theirs."""
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import numpy as np
@@ -11,6 +12,9 @@ import tifffile
 from _harness import choose, expect, finish, pump, register, viewer, widget
 
 from napari_labconstrictor import _export
+
+if TYPE_CHECKING:
+    from typing import Any
 
 register("interactions", "labconstrictor_tools.examples.interactions")
 work = Path(tempfile.mkdtemp(prefix="lcregion_"))
@@ -30,7 +34,7 @@ image_label = widget._label_of("image")
 region_label = widget._label_of("region")
 
 
-def export():
+def export() -> "tuple[Any, str | None]":
     try:
         return widget._export_inputs({"image": field, "region": None}, Path(tempfile.mkdtemp())), None
     except ValueError as error:

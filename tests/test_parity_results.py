@@ -14,7 +14,7 @@ from napari_labconstrictor._results import COULD_NOT_DISPLAY, MAX_SHAPES, NOT_FI
 work = Path(tempfile.mkdtemp(prefix="lcres_"))
 
 
-def square(i):
+def square(i: float) -> list[list[float]]:
     x = i % 300
     return [[x, 0], [x + 0.5, 0], [x, 0.5], [x, 0]]
 

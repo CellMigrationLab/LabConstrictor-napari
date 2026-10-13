@@ -42,14 +42,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def wait(timeout=60):
+def wait(timeout: float = 60) -> "Any":
     end = time.time() + timeout
     while (w.last_task is None or w.task is not w.last_task) and time.time() < end:
         qa.processEvents()
@@ -58,20 +58,20 @@ def wait(timeout=60):
     return w.last_task
 
 
-def pick(app, label):
+def pick(app: str, label: str) -> None:
     w.app_box.value = app
     pump(0.1)
     w.tool_box.value = label
     pump(0.3)
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
 
 
-def input_dirs():
+def input_dirs() -> set[str]:
     return set(glob.glob(str(Path(tempfile.gettempdir()) / "lcin_*")))
 
 
@@ -91,10 +91,10 @@ class FakeWorker:
     closed = False
     stderr = client._Tail()  # what a real worker has
 
-    def task(self, *args, **kwargs):
+    def task(self, *args: object, **kwargs: object) -> None:
         raise BrokenPipeError("the worker died before the request was sent")
 
-    def close(self, timeout=0):
+    def close(self, timeout: float = 0) -> None:
         self.closed = True
         self.alive = False
 
@@ -127,7 +127,7 @@ from napari_labconstrictor import _widget  # noqa: E402
 real_show = _widget.ResultPresenter.show
 
 
-def boom(self, result):
+def boom(self: object, result: object) -> None:
     raise RuntimeError("cannot draw this result")
 
 
@@ -152,7 +152,7 @@ real_values = _widget.ResultPresenter.__dict__[
 ]  # the staticmethod object itself, so it can be put back as it was
 
 
-def bad_values(self, result):
+def bad_values(self: object, result: object) -> None:
     raise ValueError("bad table")
 
 
@@ -180,7 +180,12 @@ wait()
 expect("rescan_enabled_after_run", w.rescan_button.isEnabled() and w.restart_button.isEnabled())
 
 # 5. a disk that fills while saving the layer: explained, cleaned up, form usable
+from typing import TYPE_CHECKING
+
 import tifffile  # noqa: E402
+
+if TYPE_CHECKING:
+    from typing import Any
 
 v.add_image(np.zeros((8, 8), np.uint8), name="img")
 pick("synthetic", "Image stats")
@@ -188,7 +193,7 @@ before = input_dirs()
 real_imwrite = tifffile.imwrite
 
 
-def full_disk(*args, **kwargs):
+def full_disk(*args: "str | Path", **kwargs: object) -> None:
     Path(args[0]).write_bytes(b"partial")
     raise OSError(28, "No space left on device")
 
@@ -250,7 +255,7 @@ pid = w.worker.proc.pid if w.worker is not None else None
 expect("worker_kept_between_runs", pid is not None and w._workers._workers, w._workers._workers)
 
 
-def alive(pid):
+def alive(pid: int) -> bool:
     """Is the process running? Never signals it: on Windows os.kill(pid, 0) would TERMINATE the process (any signal that is
     not Ctrl-C/Ctrl-Break calls TerminateProcess), so the exit code is read instead. A zombie counts as gone.
     """

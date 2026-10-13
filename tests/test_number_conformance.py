@@ -3,24 +3,28 @@ through `_numbers.check`, the function every click and every copy goes through."
 
 import json
 import sys
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 from labconstrictor_tools import conformance
 
 from napari_labconstrictor import _numbers, _schema
 
+if TYPE_CHECKING:
+    from typing import Any
+
 C = conformance.load()
 NUM = {case["id"]: case for case in C["wrong_science"]["number_limits"]["cases"]}
 report, failures = {}, []
 
 
-def expect(name, ok, detail=""):
+def expect(name: str, ok: object, detail: object = "") -> None:
     report[name] = bool(ok)
     if not ok:
         failures.append("%s %s" % (name, detail))
 
 
-def refused(param, value):
+def refused(param: "dict[str, Any]", value: object) -> str | None:
     try:
         _numbers.check(param, value)
     except ValueError as error:

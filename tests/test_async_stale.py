@@ -5,6 +5,7 @@ the checks read what the dropdown, the text field, the tooltips and the status l
 """
 
 import dataclasses
+from typing import TYPE_CHECKING
 
 import _async
 import _paths  # noqa: F401  (must come first)
@@ -14,6 +15,9 @@ from _harness import widget as w
 from napari_labconstrictor import _lookups
 from napari_labconstrictor._lookups import Reply
 
+if TYPE_CHECKING:
+    from magicgui.widgets import Widget
+
 _async.register("asyapp")
 w.rescan()
 gate = _async.Gate()
@@ -22,19 +26,19 @@ w.app_box.value = "asyapp"
 pump(0.3)
 
 
-def wait_call(n):
+def wait_call(n: int) -> object:
     return _async.wait_for(lambda: gate.count() >= n and gate.calls[n - 1]["started"].is_set(), pump)
 
 
-def settled():
+def settled() -> object:
     return _async.wait_for(w.choices_settled, pump)
 
 
-def shown(x):
+def shown(x: "Widget") -> bool:
     return not x.native.isHidden()
 
 
-def tooltips():
+def tooltips() -> list[str]:
     return [x.native.toolTip() for x in w.gui]
 
 

@@ -14,7 +14,7 @@ import subprocess
 import sys
 import unittest
 from types import SimpleNamespace
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 from unittest import mock
 
 import _paths  # noqa: F401  (must come first)
@@ -22,6 +22,10 @@ from labconstrictor_tools import registry
 from labconstrictor_tools import runs as tools_runs
 
 from napari_labconstrictor import _retention
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
 
 ROOT = _paths.ROOT
 CAL = {
@@ -38,7 +42,14 @@ OLD_STDERR_TAIL = (
 )
 
 
-def task(status, error=None, code=None, traceback=None, results=(), cancel_requested=False):
+def task(
+    status: str,
+    error: str | None = None,
+    code: str | None = None,
+    traceback: str | None = None,
+    results: "Sequence[Any]" = (),
+    cancel_requested: bool = False,
+) -> SimpleNamespace:
     outputs = {"results": list(results), "timings": {"total_s": 1.5}, "diagnostics": {"python": "3.11.0"}}
     return SimpleNamespace(
         status=status,
@@ -58,7 +69,7 @@ RUNS = {
 }  # fmt: skip
 
 
-def old_content(task, stderr, snapshot, apps):
+def old_content(task: "Any", stderr: str, snapshot: "Any", apps: "Any") -> "dict[str, Any]":
     """What `_widget._record_run` built before this change (main at 6f9317f), copied here so the bytes are compared with it."""
     return {
         "run_id": snapshot.run_id if snapshot else None,
@@ -80,20 +91,20 @@ def old_content(task, stderr, snapshot, apps):
     }  # fmt: skip
 
 
-def new_content(task, stderr, **kw):
+def new_content(task: "Any", stderr: str, **kw: "Any") -> "dict[str, Any]":
     content = _retention.run_record(APP, TOOL, REQUEST, task, 2.3456, stderr, SNAPSHOT, **kw)
     content["finished_utc"] = "FIXED"  # the only field that is the time of writing
     return content
 
 
 class RunJson(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.apps = {APP: {"version": "1.4.2"}}
         patcher = mock.patch.object(registry, "load_all", return_value=self.apps)
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_the_text_is_what_the_plugin_wrote_before_for_every_way_a_run_ends(self):
+    def test_the_text_is_what_the_plugin_wrote_before_for_every_way_a_run_ends(self) -> None:
         for label, t in RUNS.items():
             for stderr in ("", "short worker output\n", "x" * 2999):
                 with self.subTest(run=label, stderr=len(stderr)):
@@ -101,7 +112,7 @@ class RunJson(unittest.TestCase):
                     new = tools_runs.record_json(new_content(t, stderr, keep_inputs=("_calibration",)))
                     self.assertEqual(new, old)
 
-    def test_the_file_is_the_same_bytes(self):
+    def test_the_file_is_the_same_bytes(self) -> None:
         t, stderr = RUNS["failed"], "boom\n"
         old = json.dumps(old_content(t, stderr, SNAPSHOT, self.apps), indent=2, default=str)
         record = _retention.RunRecord.start(APP, TOOL, SNAPSHOT.run_id)
@@ -112,7 +123,7 @@ class RunJson(unittest.TestCase):
         )  # write_text translates newlines the way the platform does, now and before
         self.assertEqual((record.folder / "run.json").read_bytes(), expected.encode("utf-8"))
 
-    def test_keys_come_in_the_old_order_and_the_job_folder_and_matrix_are_left_out(self):
+    def test_keys_come_in_the_old_order_and_the_job_folder_and_matrix_are_left_out(self) -> None:
         content = new_content(RUNS["complete"], "")
         self.assertEqual(list(content), list(old_content(RUNS["complete"], "", SNAPSHOT, self.apps)))
         self.assertEqual(content["run_id"], SNAPSHOT.run_id)
@@ -122,13 +133,13 @@ class RunJson(unittest.TestCase):
         got = _retention.run_record(APP, TOOL, request, RUNS["complete"], 1, "", SNAPSHOT)
         self.assertNotIn("_job_dir", got["inputs"])
 
-    def test_calibration_is_under_inputs(self):
+    def test_calibration_is_under_inputs(self) -> None:
         self.assertEqual(new_content(RUNS["complete"], "")["inputs"]["_calibration"], {"pixel_size": CAL})
 
-    def test_calibration_is_kept_even_when_the_installed_tools_does_not_copy_it(self):
+    def test_calibration_is_kept_even_when_the_installed_tools_does_not_copy_it(self) -> None:
         real = tools_runs.build_record
 
-        def without_calibration(*args, **kwargs):
+        def without_calibration(*args: "Any", **kwargs: "Any") -> "dict[str, Any]":
             content = real(*args, **kwargs)
             content["inputs"].pop("_calibration", None)  # a Tools that drops reserved inputs
             return content
@@ -139,10 +150,10 @@ class RunJson(unittest.TestCase):
         self.assertEqual(kept["inputs"]["_calibration"], {"pixel_size": CAL})
         self.assertNotIn("_calibration", dropped["inputs"])  # the guard is what keeps it, not luck
 
-    def test_a_calibration_entry_tools_copied_is_not_replaced(self):
+    def test_a_calibration_entry_tools_copied_is_not_replaced(self) -> None:
         real = tools_runs.build_record
 
-        def own_copy(*args, **kwargs):
+        def own_copy(*args: "Any", **kwargs: "Any") -> "dict[str, Any]":
             content = real(*args, **kwargs)
             content["inputs"]["_calibration"] = {"from": "tools"}
             return content
@@ -153,7 +164,7 @@ class RunJson(unittest.TestCase):
                 {"from": "tools"},
             )
 
-    def test_the_stderr_tail_is_the_one_tools_writes_for_its_own_records(self):
+    def test_the_stderr_tail_is_the_one_tools_writes_for_its_own_records(self) -> None:
         long = "".join(chr(65 + i % 26) for i in range(6000))
         tail = new_content(RUNS["failed"], long)["stderr_tail"]
         self.assertEqual(
@@ -169,12 +180,12 @@ class DoneStatus(unittest.TestCase):
         ("FAILED", True, "failed"), ("COMPLETE", True, "ok"), ("RUNNING", False, "failed"),
     ]  # fmt: skip
 
-    def test_every_way_a_task_ends(self):
+    def test_every_way_a_task_ends(self) -> None:
         for status, cancel, expected in self.TABLE:
             with self.subTest(status=status, cancel_requested=cancel):
                 self.assertEqual(tools_runs.done_status(status, cancel), expected)
 
-    def test_the_plugin_keeps_no_copy_of_the_mapping(self):
+    def test_the_plugin_keeps_no_copy_of_the_mapping(self) -> None:
         self.assertFalse(hasattr(_retention, "done_status"))
         self.assertFalse(hasattr(_retention, "_DONE_STATUS"))
         source = (ROOT / "napari_labconstrictor" / "_widget.py").read_text(encoding="utf-8")
@@ -182,10 +193,10 @@ class DoneStatus(unittest.TestCase):
 
 
 class ToolsVersionCheck(unittest.TestCase):
-    def test_this_tools_has_the_helpers(self):
+    def test_this_tools_has_the_helpers(self) -> None:
         self.assertIsNone(_retention.tools_problem())
 
-    def test_a_tools_without_a_helper_gets_a_sentence_that_says_what_to_do(self):
+    def test_a_tools_without_a_helper_gets_a_sentence_that_says_what_to_do(self) -> None:
         old = SimpleNamespace(done_status=lambda *a: "ok")  # what v0.2.0-rc.1 has of the three: none of them
         problem = _retention.tools_problem(
             old, installed=_retention.TOOLS_MINIMUM
@@ -198,7 +209,7 @@ class ToolsVersionCheck(unittest.TestCase):
             _retention.require_run_helpers(old)
         self.assertIn("update Tools to v0.3.0-alpha.1 or newer (version 0.3.0a1)", str(caught.exception))
 
-    def test_rc1_and_rc2_are_refused_by_their_version_even_with_the_helpers(self):
+    def test_rc1_and_rc2_are_refused_by_their_version_even_with_the_helpers(self) -> None:
         for installed in (
             "0.2.0rc1",
             "0.2.0",
@@ -214,11 +225,11 @@ class ToolsVersionCheck(unittest.TestCase):
             with self.subTest(installed=installed):
                 self.assertIsNone(_retention.tools_problem(tools_runs, installed=installed))
 
-    def test_a_helper_that_is_not_callable_counts_as_missing(self):
+    def test_a_helper_that_is_not_callable_counts_as_missing(self) -> None:
         broken = SimpleNamespace(build_record=None, record_json=str, done_status=str)
         self.assertIn("runs.build_record", _retention.tools_problem(broken))
 
-    def _import_with(self, patch):
+    def _import_with(self, patch: str) -> subprocess.CompletedProcess[str]:
         code = (
             "import sys; sys.path.insert(0, %r)\n"
             "import labconstrictor_tools.runs as r, labconstrictor_tools._version as v\n"
@@ -229,14 +240,14 @@ class ToolsVersionCheck(unittest.TestCase):
             [sys.executable, "-c", code], capture_output=True, text=True, env=dict(os.environ)
         )
 
-    def test_the_plugin_refuses_to_load_with_a_tools_without_a_helper(self):
+    def test_the_plugin_refuses_to_load_with_a_tools_without_a_helper(self) -> None:
         run = self._import_with("del r.build_record")  # the module of rc.1 as the plugin sees it
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("ImportError", run.stderr)
         self.assertIn("runs.build_record", run.stderr)
         self.assertIn("v0.3.0-alpha.1", run.stderr)
 
-    def test_the_plugin_refuses_to_load_with_the_version_of_rc2(self):
+    def test_the_plugin_refuses_to_load_with_the_version_of_rc2(self) -> None:
         run = self._import_with(
             "v.__version__ = '0.2.0rc1'"
         )  # rc.2: the helpers exist, the version is 0.2.0rc1
@@ -244,7 +255,7 @@ class ToolsVersionCheck(unittest.TestCase):
         self.assertIn("ImportError", run.stderr)
         self.assertIn("update Tools to v0.3.0-alpha.1 or newer (version 0.3.0a1)", run.stderr)
 
-    def test_the_minimum_in_pyproject_is_the_one_in_the_message(self):
+    def test_the_minimum_in_pyproject_is_the_one_in_the_message(self) -> None:
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('"labconstrictor-tools>=%s"' % _retention.TOOLS_MINIMUM, text)
 

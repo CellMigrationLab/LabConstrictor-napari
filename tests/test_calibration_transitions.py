@@ -41,7 +41,7 @@ U = Image(
 uncalibrated_file = tiff("uncal.tif")
 
 
-def start(*layers):
+def start(*layers: Image) -> None:
     fresh()
     for layer in layers:
         viewer.add_layer(layer)

@@ -16,7 +16,7 @@ timeouts = []
 class FakeWorker:
     alive = True
 
-    def close(self, timeout=None):
+    def close(self, timeout: float | None = None) -> None:
         timeouts.append(timeout)
 
 

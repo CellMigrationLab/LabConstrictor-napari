@@ -7,6 +7,7 @@ calls, which PySide6 on Python 3.11 pays for in references to None (see _paths._
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import numpy as np
@@ -30,6 +31,11 @@ from napari.layers import Image
 from qtpy.QtCore import Qt
 from qtpy.QtTest import QTest
 
+if TYPE_CHECKING:
+    from typing import Any
+
+    from qtpy.QtWidgets import QLineEdit
+
 FIELD = "pixel_size"
 LABEL = "Pixel size"
 NOT_POSITIVE = "⚠ [invalid_parameter] '%s' must be greater than 0 (um per pixel)" % LABEL
@@ -39,7 +45,7 @@ UM = Image(DATA, name="um", scale=(0.25, 0.25), units="micrometer")
 UM2 = Image(DATA, name="um2", scale=(0.5, 0.5), units="micrometer")
 
 
-def start(tool, layer=NOCAL):
+def start(tool: str, layer: Image = NOCAL) -> None:
     """A fresh form of `tool` with `layer` chosen as its image (the layers are added to the viewer once)."""
     for item in (NOCAL, UM, UM2):
         if item not in viewer.layers:
@@ -48,19 +54,19 @@ def start(tool, layer=NOCAL):
     w.gui.image.value = layer
 
 
-def box():
+def box() -> "QLineEdit":
     return w.gui[FIELD].native
 
 
-def shown():
+def shown() -> str:
     return box().text()
 
 
-def link():
+def link() -> "Any":
     return w.cal_links[FIELD]
 
 
-def enter(text, confirm=True):
+def enter(text: str, confirm: bool = True) -> None:
     """The person puts `text` into the box (selected first, then pasted as a whole) and presses Enter unless `confirm` is False."""
     edit = box()
     edit.setFocus()
@@ -73,7 +79,7 @@ def enter(text, confirm=True):
         QTest.keyClick(edit, Qt.Key.Key_Return)
 
 
-def sends(tag, text, value, source="user"):
+def sends(tag: str, text: str, value: float, source: str = "user") -> None:
     """Enter `text`: the click sends exactly `value` (a float) and `_calibration`, and the box still shows the text as typed."""
     enter(text)
     inputs, refused = request()
@@ -91,7 +97,7 @@ def sends(tag, text, value, source="user"):
         )
 
 
-def refuses(tag, text, sentence):
+def refuses(tag: str, text: str, sentence: str) -> None:
     """Enter `text`: the click refuses with `sentence`, sends nothing, and the box still shows the text (never clamped or rounded)."""
     enter(text)
     inputs, refused = request()
@@ -105,7 +111,7 @@ def refuses(tag, text, sentence):
 TMP = Path(tempfile.mkdtemp(prefix="lclinked_"))
 
 
-def start_with_file(tool, scale, name):
+def start_with_file(tool: str, scale: float, name: str) -> None:
     """A fresh form of `tool` whose image is an OME-TIFF with this physical size in micrometres (a napari layer cannot hold every scale)."""
     path = TMP / (name + ".tif")
     meta = {

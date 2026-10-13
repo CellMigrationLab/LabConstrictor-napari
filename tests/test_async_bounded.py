@@ -3,12 +3,17 @@
 Real worker processes (a source tool that waits for a barrier file); the process count is of `WorkerProcess` instances made.
 """
 
+from typing import TYPE_CHECKING
+
 import _async
 import _paths  # noqa: F401  (must come first)
 from _harness import expect, finish, pump
 from _harness import widget as w
 
 from napari_labconstrictor import _workers
+
+if TYPE_CHECKING:
+    from magicgui.widgets import Widget
 
 _async.register("asyapp")
 w.rescan()
@@ -17,11 +22,11 @@ w.app_box.value = "asyapp"
 pump(0.3)
 
 
-def settled():
+def settled() -> object:
     return _async.wait_for(w.choices_settled, pump, 90)
 
 
-def shown(x):
+def shown(x: "Widget") -> bool:
     return not x.native.isHidden()
 
 

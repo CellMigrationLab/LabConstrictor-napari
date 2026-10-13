@@ -57,7 +57,7 @@ before_runs = {p.name for p in R.folders("runs")}
 before_results = {p.name for p in R.folders("results")}
 
 
-def owned_done(root):
+def owned_done(root: str) -> list[str]:
     """Names of the owned, finished folders of a root, oldest first by their marker."""
     found = []
     for p in R.folders(root):

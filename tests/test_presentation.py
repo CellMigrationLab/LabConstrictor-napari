@@ -6,11 +6,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import napari
 from _paths import EVIDENCE
 from qtpy.QtWidgets import QApplication
+
+if TYPE_CHECKING:
+
+    from magicgui.widgets import Widget
 
 tools = Path(tempfile.mkdtemp(prefix="lcpresent_"))
 (tools / "presentation_lc_tools.py").write_text(
@@ -39,20 +44,20 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
 
 
-def shown(widget):
+def shown(widget: "Widget") -> bool:
     return not widget.native.isHidden()
 
 

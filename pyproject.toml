@@ -55,10 +55,47 @@ ignore = ["E501", "UP031", "UP032", "B905"]
 ]
 
 [tool.mypy]
+# Checked: the package, the tests and the scripts. Every function in all of them is fully annotated (scripts/check_annotations.py
+# checks the same rule without running mypy).
+files = ["napari_labconstrictor", "tests", "scripts"]
 python_version = "3.11"
+disallow_untyped_defs = true    # every function is annotated; keep it that way
+disallow_incomplete_defs = true
 ignore_missing_imports = true   # tifffile and labconstrictor_tools ship no usable stubs (napari, magicgui, qtpy are installed and typed)
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_return_any = false         # most values come from untyped Qt/magicgui calls
 no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+# The tests are standalone scripts (run under xvfb, one per file, importing each other as top-level modules: `import _paths`), so mypy
+# names them by file name and a pattern like "tests.*" cannot match them: every tests/*.py is listed here. A new test file is added to
+# this list (a file left out is simply checked with every error code, which is stricter, never looser).
+# Every function in them is annotated and the names in the annotations resolve; the bodies are checked for everything EXCEPT the codes
+# below. Each code is a kind of statement the test style needs, and the stubs make them noisy: `QApplication.instance()` is Optional
+# (union-attr, one `processEvents` per helper), the QTest overloads and tifffile/numpy keyword dicts (arg-type, call-overload,
+# call-arg), module functions and classes replaced on purpose to isolate a test (assignment, method-assign, misc, attr-defined),
+# a function attribute used as a counter, empty containers filled later (var-annotated), `[t.start() for t in threads]`
+# (func-returns-value), and results of the tools read as plain dicts (index, operator, type-var).
+module = [
+    "_async", "_calhelpers", "_channelhelpers", "_harness", "_linkedhelpers", "_numhelpers", "_paths", "_runtools",
+    "lctest_async", "lctest_numbers", "lctest_runapp", "test_adversarial_hints", "test_async_bounded",
+    "test_async_cache", "test_async_cancel", "test_async_close", "test_async_conformance", "test_async_run",
+    "test_async_stale", "test_calibration", "test_calibration_text", "test_calibration_transitions",
+    "test_channel_memory", "test_channels", "test_channels_hyperstack", "test_channels_rgb", "test_coordinate_frame",
+    "test_coordinate_frame_run", "test_copy_command", "test_file_sources", "test_form_gc_thread", "test_harness_exit",
+    "test_interactions", "test_messages_points", "test_number_conformance", "test_number_grammar",
+    "test_number_limits", "test_number_linked", "test_number_linked_run", "test_number_linked_states",
+    "test_number_run", "test_number_text", "test_parity_copy_notes", "test_parity_dimensions",
+    "test_parity_integer_limit", "test_parity_messages", "test_parity_points_frame", "test_parity_region",
+    "test_parity_results", "test_parity_worker_close", "test_presentation", "test_qt_backend", "test_region",
+    "test_results_and_workers", "test_retention_exit", "test_retention_markers", "test_retention_prune_real",
+    "test_run_identity", "test_run_record", "test_run_state", "test_scroll", "test_shapes", "test_units",
+    "test_widget", "test_widget_hardening", "test_widgets",
+]
+disable_error_code = [
+    "arg-type", "assignment", "attr-defined", "call-arg", "call-overload", "func-returns-value", "index", "method-assign", "misc",
+    "operator", "type-var", "union-attr", "var-annotated",
+]
+warn_unused_ignores = false   # a "type: ignore" in a test may silence exactly one of the codes turned off above
