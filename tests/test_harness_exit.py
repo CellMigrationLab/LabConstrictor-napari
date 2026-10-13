@@ -4,6 +4,7 @@ was printed is not lost."""
 
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -61,6 +62,51 @@ class Leave(unittest.TestCase):
     def test_the_rule_matches_the_harness(self):
         done = run("print('leaves', sys.exit.__name__ == '_leave')")
         self.assertIn("leaves %s" % LEAVES_AT_ONCE, done.stdout)
+
+
+class LeaveWaitsForPrune(unittest.TestCase):
+    """A `prune` subprocess of the widget is watched by a thread. The process must not end while that thread is inside CreateProcess
+    (Windows: access violation after the verdict, CI run 38414096255) or while `prune` still runs: `_leave` and the normal exit wait for it.
+    """
+
+    def prune_script(self, tail):
+        marker = Path(tempfile.mkdtemp(prefix="lc_exit_prune_")) / "prune_finished"
+        child = "import pathlib, time; time.sleep(1.0); pathlib.Path(%r).write_text('x')" % str(
+            marker
+        )  # the work `prune` does
+        body = (
+            "import os\n"
+            "from napari_labconstrictor import _retention\n"
+            "_retention.prune_argv = lambda python: [sys.executable, '-c', %r]\n"
+            "thread = _retention.start_prune(sys.executable, {'features': [_retention.PRUNE_FEATURE]})\n"
+            "print('started', thread is not None, flush=True)\n" % child
+        ) + tail.replace("MARKER", repr(str(marker)))
+        return marker, run(body)
+
+    def test_the_exit_waits_for_a_running_prune_and_keeps_the_verdict(self):
+        marker, done = self.prune_script(
+            "real_exit = os._exit\n"
+            "def at_exit(code):\n"
+            "    print('at exit: watcher alive', thread.is_alive(), 'prune finished', os.path.exists(MARKER), flush=True)\n"
+            "    real_exit(code)\n"
+            "os._exit = at_exit\n"
+            "sys.exit(0)\n"
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("started True", done.stdout)
+        self.assertTrue(marker.exists(), "the process ended before prune finished")
+        if LEAVES_AT_ONCE:
+            self.assertIn("at exit: watcher alive False prune finished True", done.stdout)
+
+    def test_a_failing_verdict_is_kept_while_waiting(self):
+        marker, done = self.prune_script("sys.exit(3)\n")
+        self.assertEqual(done.returncode, 3, done.stderr)
+        self.assertTrue(marker.exists(), "the process ended before prune finished")
+
+    def test_the_normal_exit_waits_too(self):
+        marker, done = self.prune_script("")  # no sys.exit at all: the interpreter ends by itself
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(marker.exists(), "the process ended before prune finished")
 
 
 if __name__ == "__main__":

@@ -1660,6 +1660,7 @@ class LabConstrictorWidget(QWidget):
         ):  # its worker is gone, so its wait has ended: no thread of the widget stays
             thread.join(2.0)
         self._lookups.hold(False)  # a run that was ended by the close no longer holds the worker
+        _retention.wait_spawned()  # the `prune` this close started has its subprocess: no thread is inside CreateProcess / fork
         self._shut_down = False
         self._was_closed = True
         super().closeEvent(event)
