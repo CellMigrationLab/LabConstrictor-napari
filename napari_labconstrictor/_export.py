@@ -87,21 +87,125 @@ def selection_mask(
     return str(path)
 
 
-def channel_file(path: Path, index: int, label: str, target: Path) -> Path:
-    """One channel of a multi-channel TIFF, written as its own TIFF."""
+class ChannelError(ValueError):
+    """A channel that cannot be picked: said to the person (tifffile's own errors, also ValueErrors, are not this)."""
+
+
+SAMPLE_NAMES = ("Red", "Green", "Blue")  # the colour samples (S axis) of an RGB TIFF
+
+
+def channel_layout(path: Path, label: str) -> tuple[str, list[str]] | None:
+    """What PickChannel can choose from in the TIFF `path`, read from its tags only (no pixels): `(axis, names)` for a file with a
+    channel axis `C` (acquisition channels) or a colour-sample axis `S` (RGB), None for a file with neither.
+
+    Policy for what cannot be chosen from (said, never guessed): a file with both `C` and `S`, and an `S` axis that is not exactly
+    three colours (an alpha channel or another sample count) is refused with a sentence.
+    """
     import tifffile
 
     with tifffile.TiffFile(str(path)) as tif:
         series = tif.series[0]
-        data, axes = series.asarray(), series.axes
-    if "C" not in axes:
-        return path
-    if index >= data.shape[axes.index("C")]:
-        raise ValueError(
-            "'%s': channel %d was asked for, but the image has %d channels"
-            % (label, index + 1, data.shape[axes.index("C")])
+        axes, shape = series.axes, series.shape
+    if "C" in axes and "S" in axes:
+        raise ChannelError(
+            "'%s': the file has both channels (C) and colour samples (S); picking one is not supported: save one of them as its own file"
+            % label
         )
-    tifffile.imwrite(target, np.take(data, index, axis=axes.index("C")))
+    if "S" in axes:
+        samples = shape[axes.index("S")]
+        if samples == 1:
+            return "S", ["Channel 1"]
+        if samples != len(SAMPLE_NAMES):
+            raise ChannelError(
+                "'%s': the file has %d colour samples (S); only plain RGB (3) can be picked from, and an alpha channel is not interpreted"
+                % (label, samples)
+            )
+        return "S", list(SAMPLE_NAMES)
+    if "C" in axes:
+        return "C", ["Channel %d" % (i + 1) for i in range(shape[axes.index("C")])]
+    return None
+
+
+def _check_budget(label: str, series: Any, axis: int, selective: bool) -> None:
+    """Refuse before reading a pixel when the memory this extraction needs passes `MAX_EXPORT_BYTES` (same budget as a layer)."""
+    itemsize = np.dtype(series.dtype).itemsize
+    full = int(np.prod(series.shape, dtype=object)) * itemsize
+    picked = full // series.shape[axis]
+    need = (
+        picked if selective else full + picked
+    )  # without selective reading the whole series is in memory with the copy of the channel
+    if need > MAX_EXPORT_BYTES:
+        raise ChannelError(
+            "'%s': extracting one channel needs %.1f GB (the image is %.1f GB%s); more than %.0f GB is not supported"
+            % (
+                label,
+                need / 1024**3,
+                full / 1024**3,
+                "" if selective else " and this file cannot be read one channel at a time",
+                MAX_EXPORT_BYTES / 1024**3,
+            )
+        )
+
+
+def read_channel(tif: Any, series: Any, axis: int, index: int, label: str) -> np.ndarray:
+    """Channel `index` along `axis` of `series` as an array, reading only what that channel occupies where the file allows it: one
+    page at a time (peak memory: the channel plus one page), else a memory map; only a file that offers neither is read whole, and
+    only when it fits the budget. The whole series is never decoded (`series.asarray()`) just to pick one channel of it.
+    """
+    shape = tuple(series.shape)
+    pages = series.pages
+    page = pages[0] if len(pages) else None
+    page_dims = len(page.shape) if page is not None else 0
+    lead = shape[: len(shape) - page_dims]
+    if (
+        page is not None
+        and tuple(shape[len(lead) :]) == tuple(page.shape)
+        and int(np.prod(lead, dtype=object)) == len(pages)
+    ):
+        _check_budget(label, series, axis, selective=True)
+        out_shape = shape[:axis] + shape[axis + 1 :]
+        out = np.empty(out_shape, dtype=series.dtype)
+        if axis < len(lead):  # the channels lie in different pages: decode only the pages of this channel
+            numbers = np.arange(len(pages)).reshape(lead)
+            wanted = np.take(numbers, index, axis=axis).ravel()
+            for slot, number in enumerate(wanted):
+                out.reshape((-1, *page.shape))[slot] = pages[int(number)].asarray()
+        else:  # the channels lie inside every page: decode a page, keep its channel
+            inner = axis - len(lead)
+            flat = out.reshape((-1, *out_shape[len(lead) :]))
+            for number in range(len(pages)):
+                flat[number] = np.take(pages[number].asarray(), index, axis=inner)
+        return out
+    import tifffile
+
+    try:  # one long contiguous run of pixels (e.g. an ImageJ hyperstack): map it, and copy only the channel
+        mapped = tifffile.memmap(str(tif.filehandle.path), series=0)
+    except (ValueError, TypeError, OSError, NotImplementedError):
+        mapped = None
+    if mapped is not None and tuple(mapped.shape) == shape:
+        _check_budget(label, series, axis, selective=True)
+        return np.array(np.take(mapped, index, axis=axis))
+    _check_budget(label, series, axis, selective=False)
+    return np.take(series.asarray(), index, axis=axis)
+
+
+def channel_file(path: Path, index: int, label: str, target: Path) -> Path:
+    """One channel of a TIFF (a `C` channel or an `S` colour of an RGB file) written as its own TIFF, or `path` itself when the file
+    has neither axis. The choice is validated against the layout first (`channel_layout`)."""
+    import tifffile
+
+    layout = channel_layout(path, label)
+    if layout is None:
+        return path
+    letter, names = layout
+    if index >= len(names):
+        raise ChannelError(
+            "'%s': channel %d was asked for, but the image has %d channels" % (label, index + 1, len(names))
+        )
+    with tifffile.TiffFile(str(path)) as tif:
+        series = tif.series[0]
+        data = read_channel(tif, series, series.axes.index(letter), index, label)
+    tifffile.imwrite(target, data)
     return target
 
 

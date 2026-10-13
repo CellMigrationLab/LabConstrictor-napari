@@ -37,9 +37,9 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from . import _calibration, _lookups, _retention, _snapshot
+from . import _calibration, _lookups, _numbers, _retention, _snapshot
 from ._calibration import UNSET, USER, Derived, LinkState
-from ._export import channel_file, export_layer, selection_mask
+from ._export import ChannelError, channel_file, channel_layout, export_layer, selection_mask
 from ._export import is_set as _is_set
 from ._frame import FrameError
 from ._lookups import Lookup, LookupQueue, Reply, next_form_gen, snapshot_deps
@@ -385,6 +385,7 @@ class LabConstrictorWidget(QWidget):
             self.status.setText("⚠ this tool cannot be shown: %s" % error)
             return
         self._form_gen = next_form_gen()  # a form was built (5.1)
+        self._freeze_slider_readouts()
         self.file_sources = self._add_file_sources(tool)
         self.channel_boxes = self._add_channel_choosers(tool)
         self.unset_toggles = self._add_unset_toggles(tool)
@@ -398,6 +399,15 @@ class LabConstrictorWidget(QWidget):
             if param.get("pixel_size_of"):
                 self._link_calibration(param["pixel_size_of"], param["name"])
         self.timings["gui_construction_ms"] = (time.perf_counter() - started) * 1000
+
+    def _freeze_slider_readouts(self) -> None:
+        """A slider's number box beside it shows the position and takes no typing: a Qt spin box would clamp or round a typed value
+        (SPEC_WRONG_SCIENCE 6.2); a person who wants to type a number is given a text field by the tool (no `widget: slider`).
+        """
+        for widget in self.gui or []:
+            readout = getattr(getattr(widget, "_widget", None), "_readout_widget", None)
+            if readout is not None:
+                readout.lineEdit().setReadOnly(True)
 
     def _remove_form(self) -> None:
         self._form_gen = next_form_gen()  # a form was destroyed (5.1): every answer on its way is void
@@ -476,11 +486,15 @@ class LabConstrictorWidget(QWidget):
         if source is not None and _is_set(source.value):
             import tifffile
 
-            try:
-                with tifffile.TiffFile(str(source.value)) as tif:
-                    series = tif.series[0]
-                    if "C" in series.axes:
-                        return ["Channel %d" % (i + 1) for i in range(series.shape[series.axes.index("C")])]
+            label = next((p["label"] for p in cast(Tool, self.tool)["inputs"] if p["name"] == name), name)
+            try:  # the file's tags only: no pixel is read to fill the chooser
+                layout = channel_layout(Path(str(source.value)), label)
+                if layout is not None:
+                    return layout[1]
+            except (
+                ChannelError
+            ) as error:  # a layout nothing can be picked from (C and S together, alpha): said now, refused at Run
+                self.status.setText("⚠ %s" % error)
             except (
                 *TIFF_READ_ERRORS,
                 tifffile.TiffFileError,
@@ -1161,6 +1175,10 @@ class LabConstrictorWidget(QWidget):
             return self._export_file_source(param, snapshot, file, job_dir)
         if name in snapshot.unset:  # nullable and not set: omit it
             return _OMIT
+        if (
+            param["type"] in ("integer", "float") and name in snapshot.values
+        ):  # what was typed, checked as typed: refused beyond a limit, never clamped (SPEC 6.2)
+            return _numbers.check(param, value)
         if value is None or (isinstance(value, Path) and str(value) in ("", ".")):
             if param["required"]:
                 hint = ": open an image or choose a file" if param["type"] in ("image", "labels") else ""
@@ -1195,9 +1213,21 @@ class LabConstrictorWidget(QWidget):
     ) -> str:
         if not path.is_file():
             raise ValueError("[file_not_found] image file not found: %s" % path)
-        picked = snapshot.channels.get(param["name"])
-        if picked is not None:  # PickChannel: the file's chosen channel is written for the worker
-            path = channel_file(path, picked, param["label"], job_dir / (param["name"] + ".tif"))
+        if param.get("pick_channel"):
+            # PickChannel: the file's chosen channel (the first when there is nothing to choose) is written for the worker; a file that
+            # has a channel axis never goes to the tool whole, and a layout nothing can be picked from is refused here
+            import tifffile
+
+            picked = snapshot.channels.get(param["name"]) or 0
+            try:
+                path = channel_file(path, picked, param["label"], job_dir / (param["name"] + ".tif"))
+            except ChannelError:
+                raise
+            except (
+                *TIFF_READ_ERRORS,
+                tifffile.TiffFileError,
+            ):  # not a TIFF the host can look into: the worker reads or refuses it
+                log.info("napari: %s is not read for channels by the host; sent as it is", path)
         return str(path)
 
     def current_values(self) -> dict[str, Any]:
@@ -1226,6 +1256,10 @@ class LabConstrictorWidget(QWidget):
         if source is not None and _is_set(source.value):
             return str(source.value)
         value = self.gui[name].value
+        if param["type"] in ("integer", "float") and not param.get("pixel_size_of"):
+            return _numbers.check(
+                param, value
+            )  # a command line never carries a number that a run would refuse
         if param["type"] in ("image", "labels"):
             path = getattr(getattr(value, "source", None), "path", None)
             return str(path) if path else None
@@ -1242,7 +1276,11 @@ class LabConstrictorWidget(QWidget):
         if self.gui is None or self.tool is None:
             return None
         app = self.app_box.value
-        values = self.current_values()
+        try:
+            values = self.current_values()
+        except ValueError as error:  # a number that a run would refuse is not copied (SPEC 6.2)
+            self.status.setText("⚠ %s" % error)
+            return None
         if kind == "python":
             text = command.python_snippet(app, self.tool, values)
         else:

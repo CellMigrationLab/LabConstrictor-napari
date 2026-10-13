@@ -62,9 +62,10 @@ pump()
 
 pick("synthetic", "Kitchen sink")
 labels = {x.name: type(x).__name__ for x in w.gui if getattr(x, "name", None)}
+# SPEC_WRONG_SCIENCE 6.2: a number is a text field (IntegerField), no longer a spin box that clamps what is typed
 expect(
     "controls_generated",
-    labels.get("count") == "SpinBox"
+    labels.get("count") == "IntegerField"
     and labels.get("mode") == "ComboBox"
     and labels.get("flag") == "CheckBox",
     labels,

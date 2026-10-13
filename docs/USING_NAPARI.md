@@ -29,7 +29,7 @@ Image inputs can come from a napari layer or an image file. If both are supplied
 
 ### Channels
 
-`PickChannel()` gives a channel chooser for the colours of an RGB layer or the channels of a TIFF given as a file. It is hidden when there is only one channel, and the tool receives only the chosen channel.
+`PickChannel()` gives a channel chooser for the colours of an RGB layer, the channels (`C` axis) of a TIFF given as a file, or the colours (`S` axis) of an RGB TIFF file. It is hidden when there is only one channel, and the tool receives only the chosen channel (one 2D image from an RGB file). A file with both `C` and `S`, or an `S` axis that is not exactly three colours, is refused with a sentence. The channel is read without decoding the whole file.
 
 ### Physical calibration
 
