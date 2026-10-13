@@ -43,7 +43,7 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then export QT_OPENGL=software; fi
           bad=0; codes=""
           for i in $(seq 1 ${{ matrix.n }}); do
-            python ${{ matrix.script }} > "run_$i.log" 2>&1; rc=$?
+            rc=0; python ${{ matrix.script }} > "run_$i.log" 2>&1 || rc=$?
             codes="$codes $rc"
             if [ $rc -ne 0 ]; then bad=$((bad+1)); echo "::group::run $i exit $rc"; tail -40 "run_$i.log"; echo "::endgroup::"; fi
           done
