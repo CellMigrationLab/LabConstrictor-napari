@@ -105,7 +105,8 @@ w.app_box.value = "adv"
 pump(0.3)
 w.tool_box.value = "Pick"
 pump(0.8)
-until(lambda: shown(w._choice_boxes["mode"]))
+# wait for ALL the ChoicesFrom questions (mode, a, b, c are separate lookups): waiting for the `mode` dropdown alone raced the others
+until(w.choices_settled)
 many = list(w._choice_boxes["mode"].choices)
 expect(
     "5000_options_with_unicode_fill_a_dropdown", len(many) >= 5000 and any("中" in c for c in many), len(many)
