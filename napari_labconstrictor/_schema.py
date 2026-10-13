@@ -6,19 +6,19 @@ import inspect
 from pathlib import Path
 from typing import Annotated, Any
 
+from . import _numbers
+from ._number_field import FloatField, IntegerField
+
 Tool = dict[str, Any]  # one tool of a registry schema, as the JSON file holds it
 Param = dict[str, Any]  # one input of a tool
 
 MAX_FORM_INTEGER = (
-    2**53 - 1
-)  # the largest whole number the spin box holds exactly (a double); the notebook form's limit too
-_INT_RANGE = (
-    -MAX_FORM_INTEGER,
-    MAX_FORM_INTEGER,
-)  # used where the schema gives no bound, and as the cap of a declared one
-_FLOAT_RANGE = (-1e15, 1e15)  # likewise for a float spin box
-_FINE_STEP = 1e-4  # Qt rounds to the step: small enough for calibrations such as 0.325 um/px
-_COARSE_STEP = 0.01  # step of a float that is neither a unit-bearing value nor below 1
+    _numbers.MAX_FORM_INTEGER
+)  # SPEC_WRONG_SCIENCE 6.1: +-(2**53 - 1), the largest whole number every double holds
+_INT_RANGE = _numbers.INTEGER_RANGE  # used where the schema gives no bound, and as the cap of a declared one
+_FLOAT_RANGE = _numbers.FLOAT_RANGE  # likewise for a float: +-1e15
+_FINE_STEP = 1e-4  # Qt rounds to the step: small enough for calibrations such as 0.325 um/px (the linked pixel-size spin box only)
+_COARSE_STEP = 0.01  # step of a float that is neither a unit-bearing value nor below 1 (likewise)
 _PATH_TYPES = ("table", "file", "folder")
 _NULLABLE_SCALARS = ("integer", "float", "string", "choice")
 _LAYER_TYPES = ("image", "labels")
@@ -73,6 +73,10 @@ def _parameter(param: Param, layer_classes: dict[str, type]) -> inspect.Paramete
         )  # "unset" is a value: the widget gets a None state, and the request omits it
         options["nullable"] = True
     default = param.get("default", inspect.Parameter.empty if param["required"] else None)
+    if default is inspect.Parameter.empty and kind in ("integer", "float") and not param.get("pixel_size_of"):
+        default = _numbers.nearest_to_zero(
+            param
+        )  # a required number with no default starts at the allowed value nearest 0 (B07)
     if kind == "boolean" and default is None:
         default = False  # a check box cannot hold None; the form's "set" box decides whether the value is sent at all
     return inspect.Parameter(
@@ -112,21 +116,30 @@ def _annotation(param: Param, layer_classes: dict[str, type]) -> tuple[Any, dict
     if kind not in ("integer", "float"):
         raise ValueError("parameter %r has the unknown type %r" % (param["name"], kind))
     is_int = kind == "integer"
-    low, high = _INT_RANGE if is_int else _FLOAT_RANGE
-    options["min"] = max(param.get("minimum", low), low) if is_int else param.get("minimum", low)
-    options["max"] = min(param.get("maximum", high), high) if is_int else param.get("maximum", high)
-    if not is_int:
-        # Qt rounds to the step, which must never corrupt calibrations such as 0.325 um/px.
-        options["step"] = (
-            _FINE_STEP if param.get("unit") or abs(param.get("default", 1)) < 1 else _COARSE_STEP
-        )
-    if (
+    low, high = _numbers.limits(param)
+    slider = (
         param.get("widget") == "slider"
         and not param.get("nullable")
         and "minimum" in param
         and "maximum" in param
-    ):
+        and not (is_int and not (low >= -(2**31) and high < 2**31))  # a Qt slider holds a 32-bit integer
+    )
+    if slider:
+        options["min"], options["max"] = low, high
+        if not is_int:
+            options["step"] = (
+                _FINE_STEP if param.get("unit") or abs(param.get("default", 1)) < 1 else _COARSE_STEP
+            )
         options["widget_type"] = (
             "Slider" if is_int else "FloatSlider"
-        )  # the readout box beside it takes a typed value
+        )  # the readout beside it is read-only (see _widget)
+    elif param.get("pixel_size_of"):
+        # the linked pixel-size field keeps its spin box: its state machine (SPEC 2.2) reads the box's edit events
+        options["min"], options["max"] = low, high
+        options["step"] = (
+            _FINE_STEP if param.get("unit") or abs(param.get("default", 1)) < 1 else _COARSE_STEP
+        )
+    else:
+        options["widget_type"] = IntegerField if is_int else FloatField
+        options["min"], options["max"] = low, high
     return (int if is_int else float), options
