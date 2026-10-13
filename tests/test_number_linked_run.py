@@ -4,6 +4,8 @@ Run is pressed for real. The tool reports the value it RECEIVED with its Python 
 its range would show. A refused entry starts nothing: no task, no worker.
 """
 
+from typing import TYPE_CHECKING
+
 import _paths  # noqa: F401  (must come first)
 from _linkedhelpers import (
     LABEL,
@@ -20,8 +22,11 @@ from _linkedhelpers import (
     w,
 )
 
+if TYPE_CHECKING:
+    from napari.layers import Image
 
-def ran(tag, text, expected_text, layer=None):
+
+def ran(tag: str, text: str | None, expected_text: str, layer: "Image | None" = None) -> None:
     start("Linked free", *([layer] if layer is not None else []))
     if text is not None:
         enter(text)

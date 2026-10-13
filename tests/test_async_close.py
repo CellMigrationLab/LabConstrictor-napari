@@ -2,6 +2,7 @@
 flight, when a worker is being started, or when a run is going. Real worker processes."""
 
 import threading
+from typing import TYPE_CHECKING
 
 import _async
 import _paths  # noqa: F401  (must come first)
@@ -10,13 +11,16 @@ from _harness import widget as w
 
 from napari_labconstrictor import LabConstrictorWidget, _workers
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
 _async.register("asyapp")
 w.rescan()
 started, Counting = _async.counting(_workers.client)
 _async.case("ASY-07", "close the widget with a lookup in flight")
 
 
-def make():
+def make() -> LabConstrictorWidget:
     widget = LabConstrictorWidget(napari_viewer=viewer)
     widget.show()
     widget.app_box.value = "asyapp"
@@ -24,7 +28,7 @@ def make():
     return widget
 
 
-def gone(pids):
+def gone(pids: "Iterable[int]") -> object:
     return _async.wait_for(lambda: not any(_async.alive(p) for p in pids), pump, 20)
 
 

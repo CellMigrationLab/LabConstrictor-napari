@@ -4,12 +4,16 @@ import json
 import os
 import sys
 import time
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import napari
 import numpy as np
 from _paths import EVIDENCE
 from qtpy.QtWidgets import QApplication
+
+if TYPE_CHECKING:
+    from typing import Any
 
 v = napari.Viewer(show=True)
 v.window.resize(1500, 950)
@@ -20,21 +24,21 @@ _, w = v.window.add_plugin_dock_widget(
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def pick(app, label):
+def pick(app: str, label: str) -> None:
     w.app_box.value = app
     pump(0.1)
     w.tool_box.value = label
     pump(0.3)
 
 
-def wait(timeout=120):
+def wait(timeout: float = 120) -> "Any":
     end = time.time() + timeout
     while (w.last_task is None or w.task is not w.last_task) and time.time() < end:
         qa.processEvents()
@@ -43,13 +47,13 @@ def wait(timeout=120):
     return w.last_task
 
 
-def run():
+def run() -> "Any":
     w.last_task = None
     w.gui()
     return wait()
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))

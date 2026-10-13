@@ -6,12 +6,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import napari
 import numpy as np
 import tifffile
 from qtpy.QtWidgets import QApplication
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 subprocess.run(
     [sys.executable, "-m", "labconstrictor_tools", "register", "--name", "interactions", "--prefix", sys.prefix,
@@ -34,14 +38,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def until(cond, timeout=60):
+def until(cond: "Callable[[], object]", timeout: float = 60) -> None:
     end = time.time() + timeout
     while not cond() and time.time() < end:
         qa.processEvents()
@@ -49,13 +53,13 @@ def until(cond, timeout=60):
     pump(0.3)
 
 
-def expect(name, ok, detail=""):
+def expect(name: str, ok: object, detail: object = "") -> None:
     report[name] = bool(ok)
     if not ok:
         failures.append("%s %s" % (name, detail))
 
 
-def run():
+def run() -> None:
     w.last_task = None
     w.gui()
     until(lambda: w.last_task is not None and w.task is w.last_task)

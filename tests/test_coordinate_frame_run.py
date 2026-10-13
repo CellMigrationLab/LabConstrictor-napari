@@ -7,6 +7,7 @@ the layers that appear. Fixture data (ASYM, the rectangle, the cases) is read fr
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import _runtools as R
@@ -16,6 +17,12 @@ from _harness import expect, finish, pump, viewer, widget
 from labconstrictor_tools import conformance
 
 from napari_labconstrictor import _widget
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
+    from napari.layers import Image
 
 w = widget
 C = conformance.load()
@@ -27,27 +34,27 @@ RECT = np.array(WS["rect"], float)
 R.use_recorder()
 
 
-def close(a, b, tol=1e-9):
+def close(a: "Any", b: "Any", tol: float = 1e-9) -> bool:
     return bool(np.allclose(np.asarray(a, float), np.asarray(b, float), atol=tol))
 
 
-def fresh():
+def fresh() -> None:
     viewer.layers.clear()
     pump(0.2)
 
 
-def source(case, name="ASYM"):
+def source(case: "dict[str, Any]", name: str = "ASYM") -> "Image":
     spec = case["source"]
     return viewer.add_image(
         ASYM, name=name, **{k: spec[k] for k in ("scale", "translate", "affine") if k in spec}
     )
 
 
-def result_values():
+def result_values() -> "Any":
     return next(r["values"] for r in w.last_task.outputs["results"] if r["type"] == "values")
 
 
-def plain_world(point, spec):
+def plain_world(point: "Sequence[float]", spec: "dict[str, Any]") -> list[float]:
     """Napari data (y, x) -> world for a fixture's `source`, plain Python (an oracle that does not use napari)."""
     y, x = point
     if "affine" in spec:
@@ -57,7 +64,7 @@ def plain_world(point, spec):
     return [y * scale[0] + translate[0], x * scale[1] + translate[1]]
 
 
-def of_this_run(prefix):
+def of_this_run(prefix: str) -> "Any":
     """The layer the last run drew whose name starts with `prefix` (several runs may have drawn layers of the same name)."""
     run_id = w.snapshot.run_id
     return next(
@@ -67,7 +74,7 @@ def of_this_run(prefix):
     )
 
 
-def world_vertices(layer, vertices):
+def world_vertices(layer: "Any", vertices: "Sequence[Sequence[float]] | np.ndarray") -> np.ndarray:
     return np.array([layer.data_to_world(tuple(v)) for v in vertices])
 
 
@@ -123,7 +130,7 @@ w.region_toggles["region"].value = True
 real_export = _widget.export_layer
 
 
-def tampering(layer, picked, path):
+def tampering(layer: "Image", picked: "Any", path: Path) -> None:
     real_export(layer, picked, path)
     shapes.translate = (30, 30)  # the person drags the selection ...
     shapes.rotate = 45

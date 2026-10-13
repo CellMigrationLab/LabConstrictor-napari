@@ -2,12 +2,18 @@
 series is never decoded to make it. The chooser is filled from the tags (no pixel read). The size budget is the layer export's.
 """
 
+from typing import TYPE_CHECKING
+
 import _paths  # noqa: F401  (must come first)
 import numpy as np
 import tifffile
 from _channelhelpers import WORK, choose_channel_tool, expect, finish, pick, sent_array, set_file, w
 
 from napari_labconstrictor import _export
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Any
 
 calls = {"series": 0, "file": 0}
 for cls, name, key in [
@@ -16,7 +22,13 @@ for cls, name, key in [
 ]:
     original = getattr(cls, name)
 
-    def wrapper(self, *args, __original=original, __key=key, **kwargs):
+    def wrapper(
+        self: "Any",
+        *args: object,
+        __original: "Callable[..., object]" = original,
+        __key: str = key,
+        **kwargs: object,
+    ) -> object:
         calls[__key] += 1
         return __original(self, *args, **kwargs)
 

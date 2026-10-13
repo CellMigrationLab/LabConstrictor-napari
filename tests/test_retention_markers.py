@@ -11,6 +11,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import _runtools as R
@@ -20,6 +21,9 @@ from _harness import expect, finish, pump, viewer, widget
 from labconstrictor_tools import conformance, log
 
 from napari_labconstrictor import _results, _retention
+
+if TYPE_CHECKING:
+    from typing import Any
 
 w = widget
 C = conformance.load()["wrong_science"]["retention"]
@@ -32,7 +36,7 @@ records = []
 
 
 class _Catch(logging.Handler):
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         records.append((record.levelno, record.getMessage()))
 
 
@@ -40,7 +44,7 @@ log.logger().addHandler(_Catch())
 log.logger().setLevel(logging.DEBUG)
 
 
-def logged(text):
+def logged(text: str) -> list[str]:
     return [message for _, message in records if text in message]
 
 
@@ -176,7 +180,7 @@ expect(
 results_before = R.folders("results")
 
 
-def ended_run(label, expected_status):
+def ended_run(label: str, expected_status: str) -> Path:
     R.join_prune()
     folder = R.folders("runs")[-1]
     expect(
@@ -238,7 +242,7 @@ R.pick("Echo")
 real_acquire = w._workers.acquire
 
 
-def gone(*_args, **_kw):
+def gone(*_args: object, **_kw: object) -> None:
     raise OSError("the app's python is gone")
 
 
@@ -336,7 +340,7 @@ R.make_owned("results", "result", 60, "20200101T000000_")
 R.make_owned("runs", "run", 120, "2020")
 
 
-def snapshot_of_files():
+def snapshot_of_files() -> "dict[str, Any]":
     return {
         str(p.relative_to(R.HOME)): p.read_bytes()
         for root in ("results", "runs")
@@ -385,15 +389,15 @@ FORBIDDEN = ("rmtree", "rmdir", "unlink", "remove", "removedirs")
 
 
 class Finder(ast.NodeVisitor):
-    def __init__(self, filename):
+    def __init__(self, filename: str) -> None:
         self.filename, self.stack, self.found = filename, [], []
 
-    def visit_FunctionDef(self, node):
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.stack.append(node.name)
         self.generic_visit(node)
         self.stack.pop()
 
-    def visit_Call(self, node):
+    def visit_Call(self, node: ast.Call) -> None:
         name = getattr(node.func, "attr", getattr(node.func, "id", ""))
         allowed = self.filename == "_retention.py" and self.stack[:1] == ["discard_job_dir"]
         layer_list = (

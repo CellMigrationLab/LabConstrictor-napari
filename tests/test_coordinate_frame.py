@@ -62,7 +62,7 @@ TOOL = {
 PARAM = {"label": "Region", "name": "region", "region_of": "image"}
 
 
-def make_source(spec, name="source"):
+def make_source(spec: "dict[str, Any]", name: str = "source") -> "Image":
     """A real Image layer with the transform of a fixture's `source`."""
     kwargs = {k: spec[k] for k in ("scale", "translate", "affine") if k in spec}
     data = [np.zeros(s, np.uint16) for s in spec["levels"]] if "levels" in spec else ASYM
@@ -72,7 +72,7 @@ def make_source(spec, name="source"):
     return layer
 
 
-def snapshot_for(layer=None, shapes=None, files=None):
+def snapshot_for(layer: "Image | None" = None, shapes: "Any" = None, files: "Any" = None) -> "RunSnapshot":
     values = {"image": layer, "region": None}
     return _snapshot.take(
         "app",
@@ -84,7 +84,7 @@ def snapshot_for(layer=None, shapes=None, files=None):
     )
 
 
-def region_mask(layer, shapes):
+def region_mask(layer: "Image", shapes: "Any") -> tuple[np.ndarray, np.ndarray]:
     """(the mask pixels as (y, x) tuples, the exported image) of the real export of this selection."""
     snap = snapshot_for(layer, shapes)
     job = Path(tempfile.mkdtemp(dir=WORK))
@@ -95,13 +95,13 @@ def region_mask(layer, shapes):
     return mask, image
 
 
-def csv_points(name, rows):
+def csv_points(name: str, rows: "Sequence[Sequence[float]]") -> "dict[str, Any]":
     path = WORK / (name + ".csv")
     path.write_text("y,x\n" + "".join("%s,%s\n" % tuple(r) for r in rows), encoding="utf-8")
     return {"type": "points", "name": name, "path": str(path), "n": len(rows), "apply_to": "image"}
 
 
-def geojson_rect(name, vertices_yx):
+def geojson_rect(name: str, vertices_yx: "Sequence[Sequence[float]] | np.ndarray") -> "dict[str, Any]":
     ring = [[x, y] for y, x in vertices_yx]
     ring.append(ring[0])
     path = WORK / (name + ".geojson")
@@ -113,13 +113,13 @@ def geojson_rect(name, vertices_yx):
     return {"type": "shapes", "name": name, "path": str(path), "n": 1, "apply_to": "image"}
 
 
-def labels_result(name, array):
+def labels_result(name: str, array: np.ndarray) -> "dict[str, Any]":
     path = WORK / (name + ".tif")
     tifffile.imwrite(path, array)
     return {"type": "labels", "name": name, "path": str(path), "apply_to": "image"}
 
 
-def presenter_for(snap, app="cf", replace=()):
+def presenter_for(snap: "RunSnapshot", app: str = "cf", replace: "Iterable[str]" = ()) -> "ResultPresenter":
     return _results.ResultPresenter(
         viewer,
         app,
@@ -130,16 +130,16 @@ def presenter_for(snap, app="cf", replace=()):
     )
 
 
-def close(a, b, tol=1e-9):
+def close(a: "Any", b: "Any", tol: float = 1e-9) -> bool:
     return bool(np.allclose(np.asarray(a, float), np.asarray(b, float), atol=tol))
 
 
-def fresh():
+def fresh() -> None:
     viewer.layers.clear()
     pump(0.1)
 
 
-def check_placement(ident, case, layer):
+def check_placement(ident: str, case: "dict[str, Any]", layer: "Image") -> "RunSnapshot":
     """Points, an outline and a labels result for the case's source: drawn coordinates against the fixture and against napari."""
     expected_world = case["expect"]["world"]
     point = case["point"]
@@ -458,7 +458,18 @@ expect(
 fresh()
 # napari itself cannot hold such a layer in a viewer (adding it raises LinAlgError), so the real Image class carries the fixture's affine
 # outside the viewer: the host's refusal is what is tested, for every kind of result and for a selection
+from typing import TYPE_CHECKING
+
 from napari.layers import Image as ImageLayer
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+    from typing import Any
+
+    from napari.layers import Image
+
+    from napari_labconstrictor._results import ResultPresenter
+    from napari_labconstrictor._snapshot import RunSnapshot
 
 layer = ImageLayer(ASYM, name="flat", affine=CASES["CF-13"]["source"]["affine"])
 snap = snapshot_for(layer)

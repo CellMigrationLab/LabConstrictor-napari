@@ -24,7 +24,15 @@ from _numhelpers import (
 )
 
 
-def entry(tag, tool, name, text, accepted, sentence=None, value=None):
+def entry(
+    tag: str,
+    tool: str,
+    name: str,
+    text: str,
+    accepted: bool,
+    sentence: str | None = None,
+    value: float | None = None,
+) -> None:
     """Type `text` into field `name` of `tool`; the click either sends `value` (exactly, same type) or refuses with `sentence`."""
     choose(tool)
     type_text(name, text)

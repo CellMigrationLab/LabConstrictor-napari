@@ -26,14 +26,14 @@ _, w = v.window.add_plugin_dock_widget("napari-labconstrictor", "LabConstrictor 
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def until(condition, timeout=120):
+def until(condition: "Callable[[], object]", timeout: float = 120) -> None:
     end = time.time() + timeout
     while not condition() and time.time() < end:
         qa.processEvents()
@@ -41,14 +41,14 @@ def until(condition, timeout=120):
     pump(0.4)
 
 
-def run():
+def run() -> None:
     w.last_task = None
     w.gui()
     until(lambda: w.last_task is not None and w.task is w.last_task)
     pump(0.8)
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
@@ -109,7 +109,12 @@ names = [l.name for l in v.layers]
 expect("second_run_replaces", names == ["blobs_in", "interactions:blobs", "interactions:outlines"], names)
 
 # the limit: more than 50 000 outlines show the first 50 000 and say so
+from typing import TYPE_CHECKING
+
 from napari_labconstrictor._results import MAX_SHAPES, ResultPresenter
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 folder = Path(tempfile.mkdtemp(prefix="lcshapes_"))
 count = MAX_SHAPES + 100

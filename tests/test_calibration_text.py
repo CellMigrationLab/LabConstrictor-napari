@@ -33,14 +33,14 @@ U = Image(DATA, name="U", scale=(0.25, 0.25))
 uncal = tiff("uncal_text.tif")
 
 
-def start(*layers):
+def start(*layers: Image) -> None:
     fresh()
     for layer in layers:
         viewer.add_layer(layer)
     settle()
 
 
-def tip():
+def tip() -> str:
     return w.gui[FIELD].tooltip
 
 

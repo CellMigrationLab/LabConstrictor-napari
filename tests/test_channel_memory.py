@@ -12,6 +12,7 @@ import sys
 import tempfile
 import tracemalloc
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import numpy as np
@@ -19,10 +20,13 @@ import tifffile
 
 from napari_labconstrictor import _export
 
+if TYPE_CHECKING:
+    from typing import Any
+
 report, failures = {}, []
 
 
-def expect(name, ok, detail=""):
+def expect(name: str, ok: object, detail: object = "") -> None:
     report[name] = bool(ok)
     if not ok:
         failures.append("%s %s" % (name, detail))
@@ -33,10 +37,10 @@ calls = {"series": 0, "file": 0, "pages": 0}
 decoded = set()  # page numbers: a frame decodes through its key page, which must not count twice
 
 
-def counted(cls, name, key):
+def counted(cls: type, name: str, key: str) -> None:
     original = getattr(cls, name)
 
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: "Any", *args: object, **kwargs: object) -> object:
         if key == "pages":
             decoded.add(self.index)
             calls[key] = len(decoded)
@@ -53,13 +57,13 @@ counted(tifffile.TiffPage, "asarray", "pages")
 counted(tifffile.TiffFrame, "asarray", "pages")
 
 
-def reset():
+def reset() -> None:
     decoded.clear()
     for key in calls:
         calls[key] = 0
 
 
-def extract(path, index, label="Image"):
+def extract(path: Path, index: int, label: str = "Image") -> tuple[np.ndarray, dict[str, int]]:
     target = work / "channel.tif"
     reset()
     result = _export.channel_file(path, index, label, target)
@@ -158,11 +162,11 @@ for compressed in (False, True):
 class Series:
     """What tifffile gives for an ImageJ file whose pages after the first are implied: `pages` has one entry, `asarray` must not be used."""
 
-    def __init__(self, series, pages, big_dtype=None):
+    def __init__(self, series: "Any", pages: "Any", big_dtype: object = None) -> None:
         self.shape, self.axes, self.dtype = series.shape, series.axes, series.dtype
         self.pages = pages
 
-    def asarray(self):
+    def asarray(self) -> None:
         raise AssertionError("the whole series was decoded")
 
 

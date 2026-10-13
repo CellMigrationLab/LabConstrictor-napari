@@ -8,7 +8,7 @@ import _paths  # noqa: F401  (must come first)
 from _numhelpers import INT_MAX, NUM, above, choose, expect, finish, received, run, type_text, w
 
 
-def ran(tag, tool, typed, expected_text):
+def ran(tag: str, tool: str, typed: dict[str, str], expected_text: str) -> None:
     choose(tool)
     for name, text in typed.items():
         type_text(name, text)

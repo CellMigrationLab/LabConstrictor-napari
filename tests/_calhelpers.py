@@ -5,6 +5,7 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 import _runtools as R
@@ -22,6 +23,10 @@ from napari.layers import Image
 from qtpy.QtCore import Qt
 from qtpy.QtTest import QTest
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
 w = widget
 C = conformance.load()
 CAL = C["wrong_science"]["calibration"]
@@ -34,7 +39,7 @@ DATA = np.zeros((6, 6), np.uint16)
 FIELD = "pixel_size"
 
 
-def ome_file(scale, unit):
+def ome_file(scale: "float | Sequence[float]", unit: str) -> Path:
     """An OME-TIFF whose physical size is `scale` (y, x) in the unit text `unit` (None: no unit attribute at all)."""
     scale = scale if isinstance(scale, list | tuple) else (scale, scale)
     meta = {"axes": "YX", "PhysicalSizeY": scale[0], "PhysicalSizeX": scale[1]}
@@ -47,7 +52,7 @@ def ome_file(scale, unit):
 ome_file.count = 0
 
 
-def pint_layer(scale, unit, name="src"):
+def pint_layer(scale: "float | Sequence[float]", unit: str | None, name: str = "src") -> Image | None:
     """A real napari layer with these units, or None when napari (pint) does not accept the text."""
     scale = tuple(scale) if isinstance(scale, list | tuple) else (scale, scale)
     try:
@@ -56,14 +61,14 @@ def pint_layer(scale, unit, name="src"):
         return None
 
 
-def settle():
+def settle() -> None:
     """Let Qt deliver what is queued. Not `pump`: the loops of `pump` make thousands of Qt calls, and PySide6 on Python 3.11 loses a
     reference to None on each of them (see _paths._leave): a test with this many steps would abort the interpreter before it ends.
     """
     qa.processEvents()
 
 
-def fresh(tool="Pixel size required", rebuild=True):
+def fresh(tool: str = "Pixel size required", rebuild: bool = True) -> None:
     """No layers, no file. `rebuild`: also a new form (a user value or a state left by the last scenario is gone with it)."""
     viewer.layers.clear()
     if w.tool_box.value != tool or w.app_box.value != R.APP:
@@ -74,28 +79,28 @@ def fresh(tool="Pixel size required", rebuild=True):
     settle()
 
 
-def choose(layer):
+def choose(layer: Image) -> None:
     if layer not in viewer.layers:
         viewer.add_layer(layer)
     w.gui.image.value = layer
     settle()
 
 
-def tiff(name, **kwargs):
+def tiff(name: str, **kwargs: "Any") -> Path:
     path = TMP / name
     tifffile.imwrite(path, DATA.astype(np.uint8), **kwargs)
     return path
 
 
-def link():
+def link() -> "Any":
     return w.cal_links[FIELD]
 
 
-def field():
+def field() -> "Any":
     return w.gui[FIELD].value
 
 
-def request():
+def request() -> "tuple[Any, str | None]":
     """(inputs, None) the form would send to the worker, or (None, the sentence) when the run is refused (what a click does first)."""
     seen = []
     w._launch = lambda form_values: seen.append(form_values)
@@ -112,7 +117,7 @@ def request():
     return prepared[0], None
 
 
-def type_value(text, enter=True):
+def type_value(text: str, enter: bool = True) -> None:
     """The person types into the box (a line of text) key by key, and presses Enter unless `enter` is False: Qt's own edit signals fire."""
     edit = w.gui[FIELD].native
     edit.setFocus()
@@ -126,22 +131,22 @@ def type_value(text, enter=True):
     settle()
 
 
-def shown():
+def shown() -> str:
     """The text in the box, exactly as it is."""
     return w.gui[FIELD].native.text()
 
 
-def not_set():
+def not_set() -> bool:
     """The box is empty and says '(not set)' (the display of an unset field), and holds no value."""
     box = w.gui[FIELD]
     return box.native.text() == "" and box.native.placeholderText() == "(not set)" and box.value is None
 
 
-def known(value, expected):
+def known(value: float | None, expected: float) -> bool:
     return value is not None and abs(value - expected) <= 1e-9 * abs(expected)
 
 
-def check_known(tag, expected, source="image", raw_unit=None):
+def check_known(tag: str, expected: float, source: str = "image", raw_unit: str | None = None) -> None:
     """The field, its state and the request all say `expected` micrometres per pixel, from `source`."""
     inputs, refused = request()
     ok = inputs is not None and known(inputs.get(FIELD), expected)
@@ -161,7 +166,7 @@ def check_known(tag, expected, source="image", raw_unit=None):
         expect(tag + "_raw_unit_kept", entry["axes"]["x"]["raw"]["unit"] == raw_unit, entry["axes"]["x"])
 
 
-def check_unknown(tag, warning=None):
+def check_unknown(tag: str, warning: str | None = None) -> None:
     """The field is empty and unset, the run is refused with the sentence of 2.3.1, and nothing is sent."""
     inputs, refused = request()
     expect(
@@ -178,7 +183,7 @@ def check_unknown(tag, warning=None):
         expect(tag + "_warning", warning in w.status.text(), w.status.text())
 
 
-def run_real():
+def run_real() -> "tuple[Any, Any]":
     w.last_task = None
     w.gui()
     R.wait_done()

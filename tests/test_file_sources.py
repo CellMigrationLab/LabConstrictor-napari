@@ -20,21 +20,21 @@ TMP = Path(tempfile.mkdtemp(prefix="lcfile_"))
 report, failures = {}, []
 
 
-def pump(sec=0.3):
+def pump(sec: float = 0.3) -> None:
     end = time.time() + sec
     while time.time() < end:
         qa.processEvents()
         time.sleep(0.02)
 
 
-def pick(app, label):
+def pick(app: str, label: str) -> None:
     w.app_box.value = app
     pump(0.1)
     w.tool_box.value = label
     pump(0.3)
 
 
-def run(timeout=120):
+def run(timeout: float = 120) -> "Any":
     w.last_task = None
     w.gui()
     end = time.time() + timeout
@@ -49,13 +49,13 @@ def run(timeout=120):
     return w.last_task
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
 
 
-def values(task):
+def values(task: "Any") -> "Any":
     return next(r["values"] for r in task.outputs["results"] if r["type"] == "values")
 
 
@@ -104,7 +104,12 @@ pump(0.5)
 expect("missing_file_message", "file not found" in w.status.text() and w.last_task is None, w.status.text())
 
 # other formats through imageio, and a corrupt file gives the tool's message
+from typing import TYPE_CHECKING
+
 import imageio.v3 as iio  # noqa: E402
+
+if TYPE_CHECKING:
+    from typing import Any
 
 iio.imwrite(TMP / "plain.png", (bright // 2).astype(np.uint8))
 w.file_sources["image"].value = TMP / "plain.png"

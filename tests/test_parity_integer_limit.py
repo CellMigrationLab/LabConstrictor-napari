@@ -3,6 +3,7 @@ exactly, never clamps a value the tool declared, and says its limit in the toolt
 """
 
 import unittest
+from typing import TYPE_CHECKING
 
 import _paths  # noqa: F401  (must come first)
 from magicgui import magicgui
@@ -11,11 +12,14 @@ from qtpy.QtWidgets import QApplication
 
 from napari_labconstrictor._schema import MAX_FORM_INTEGER, signature_from_schema
 
+if TYPE_CHECKING:
+    from typing import Any
+
 _app = QApplication.instance() or QApplication([])
 
 
-def form(**param):
-    def run(**values):
+def form(**param: object) -> "Any":
+    def run(**values: object) -> dict[str, object]:
         return values
 
     tool = {"id": "t", "inputs": [{"name": "n", "label": "N", "type": "integer", "required": True, **param}]}
@@ -24,10 +28,10 @@ def form(**param):
 
 
 class IntegerLimit(unittest.TestCase):
-    def test_the_limit_is_the_notebooks(self):
+    def test_the_limit_is_the_notebooks(self) -> None:
         self.assertEqual(MAX_FORM_INTEGER, 2**53 - 1)
 
-    def test_an_unbounded_integer_holds_the_limit_exactly(self):
+    def test_an_unbounded_integer_holds_the_limit_exactly(self) -> None:
         box = form().n
         self.assertEqual((box.min, box.max), (-MAX_FORM_INTEGER, MAX_FORM_INTEGER))
         box.value = MAX_FORM_INTEGER
@@ -36,22 +40,22 @@ class IntegerLimit(unittest.TestCase):
         box.value = 3_000_000_000  # beyond a 32-bit box
         self.assertEqual(box.value, 3_000_000_000)
 
-    def test_a_declared_range_is_kept_and_needs_no_note(self):
+    def test_a_declared_range_is_kept_and_needs_no_note(self) -> None:
         gui = form(minimum=0, maximum=10, description="how many")
         self.assertEqual((gui.n.min, gui.n.max), (0, 10))
         self.assertEqual(gui.n.tooltip, "how many")
 
-    def test_a_declared_range_beyond_the_limit_is_cut_and_says_so(self):
+    def test_a_declared_range_beyond_the_limit_is_cut_and_says_so(self) -> None:
         gui = form(minimum=-(2**60), maximum=2**60)
         self.assertEqual((gui.n.min, gui.n.max), (-MAX_FORM_INTEGER, MAX_FORM_INTEGER))
         self.assertIn(str(MAX_FORM_INTEGER), gui.n.tooltip)
 
-    def test_an_open_bound_says_the_limit(self):
+    def test_an_open_bound_says_the_limit(self) -> None:
         gui = form(minimum=0, description="count")
         self.assertEqual(gui.n.tooltip, "count Whole numbers up to +-%d." % MAX_FORM_INTEGER)
 
-    def test_a_float_keeps_its_own_range(self):
-        def run(**values):
+    def test_a_float_keeps_its_own_range(self) -> None:
+        def run(**values: object) -> dict[str, object]:
             return values
 
         tool = {"id": "t", "inputs": [{"name": "x", "label": "X", "type": "float", "required": True}]}

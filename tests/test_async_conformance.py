@@ -22,7 +22,7 @@ COVERED_BY = {
 report, failures = {}, []
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))

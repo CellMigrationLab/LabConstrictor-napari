@@ -6,7 +6,7 @@ import json
 import sys
 import threading
 import time
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import _async
 import _paths  # noqa: F401  (must come first)
@@ -14,10 +14,15 @@ import _paths  # noqa: F401  (must come first)
 from napari_labconstrictor import _lookups, _workers
 from napari_labconstrictor._lookups import Lookup, LookupQueue
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from threading import Thread
+    from typing import Any
+
 report, failures = {}, []
 
 
-def expect(name, condition, detail=""):
+def expect(name: str, condition: object, detail: object = "") -> None:
     report[name] = bool(condition)
     if not condition:
         failures.append("%s %s" % (name, detail))
@@ -32,7 +37,7 @@ class FakeWorker:
     build_gate = None  # an Event: the constructor waits for it
     building = None  # an Event set when a constructor has begun
 
-    def __init__(self, app):
+    def __init__(self, app: str) -> None:
         if FakeWorker.building is not None:
             FakeWorker.building.set()
         if FakeWorker.build_gate is not None:
@@ -41,7 +46,7 @@ class FakeWorker:
         self.state = threading.Lock()
         FakeWorker.made.append(self)
 
-    def close(self, timeout=None):
+    def close(self, timeout: float | None = None) -> None:
         with self.state:
             self.closes += 1
         if FakeWorker.closing is not None:
@@ -50,12 +55,12 @@ class FakeWorker:
             FakeWorker.hold_close.wait(30)
         self.alive = False
 
-    def kill(self):
+    def kill(self) -> None:
         self.killed = True
         self.alive = False
 
 
-def reset():
+def reset() -> None:
     FakeWorker.made, FakeWorker.hold_close, FakeWorker.closing = [], None, None
     FakeWorker.build_gate = FakeWorker.building = None
 
@@ -64,10 +69,10 @@ _workers.client.WorkerProcess = FakeWorker
 _workers.atexit.register = lambda *_a, **_k: None  # the caches of this script are closed by the script
 
 
-def in_thread(function, *args):
+def in_thread(function: "Callable[..., object]", *args: object) -> "tuple[Thread, dict[str, Any]]":
     box = {}
 
-    def target():
+    def target() -> None:
         try:
             box["value"] = function(*args)
         except BaseException as error:  # noqa: BLE001 - reported by the test
@@ -141,7 +146,7 @@ held, problems = set(), []
 held_lock = threading.Lock()
 
 
-def job():
+def job() -> None:
     for _ in range(rounds):
         barrier.wait(30)
         try:
@@ -159,13 +164,13 @@ def job():
         cache.release("a", w, True)
 
 
-def reaper():
+def reaper() -> None:
     for _ in range(rounds):
         barrier.wait(30)
         cache.reap_idle()
 
 
-def closer_thread():
+def closer_thread() -> None:
     for i in range(rounds):
         barrier.wait(30)
         if i % 3 == 0:
@@ -220,7 +225,7 @@ cache.close_all()
 
 
 # ---- 5.4: bounded work ------------------------------------------------------------------------------------------------------------
-def make_job(param, request_id=1):
+def make_job(param: str, request_id: int = 1) -> Lookup:
     return Lookup(1, "app", "tool", param, None, request_id, "src", "choices", {})
 
 
@@ -228,7 +233,7 @@ _async.case("ASY-04", "change a dependency 50 times in 1 s")
 ran, enter, leave = [], threading.Event(), threading.Event()
 
 
-def slow_run(job):
+def slow_run(job: Lookup) -> None:
     ran.append(job.request_id)
     enter.set()
     leave.wait(30)
@@ -305,7 +310,7 @@ queue.close()
 enter, flight = threading.Event(), []
 
 
-def cancellable(job):
+def cancellable(job: Lookup) -> None:
     flight.append(job)
     enter.set()
     job.cancelled.wait(30)
