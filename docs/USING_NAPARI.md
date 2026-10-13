@@ -33,7 +33,7 @@ Image inputs can come from a napari layer or an image file. If both are supplied
 
 ### Physical calibration
 
-When the tool declares a pixel-size parameter linked to an image, the widget fills it from the layer's scale (converted to micrometres) or from the TIFF header. Both the Y and the X pixel size are read; the tool takes one value and receives the X one, and the status line warns when Y and X differ. A layer unit that is not a length (napari's default `pixel`) is taken to be micrometres, and the status line says so. Check units before quantitative analysis.
+When the tool declares a pixel-size parameter linked to an image, the widget fills it from the file chosen for that image, else from the layer's scale and units (converted to micrometres), until you type a value. It never assumes micrometres: a layer with napari's default `pixel` unit, an unknown or non-length unit, pixels that are not square (Y and X differ by more than 0.1 %) or a TIFF with only a 72 or 96 dpi resolution is not calibrated, the field is cleared (it shows "(not set)"), and the tool does not run until you enter the value (an optional pixel-size parameter is sent as null). Explicit units win even at scale 1 (`1 micrometer` is 1 um per pixel). A value you typed stays when you switch image; type 0 or press "use the image's calibration" to follow the image again. Check units before quantitative analysis.
 
 ## Selections
 

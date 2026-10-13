@@ -9,7 +9,7 @@ description = "Run installed LabConstrictor apps from napari (one generic widget
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"   # napari 0.8+ needs 3.11+; this is the tested baseline (CI: 3.11). Python 3.10 means napari < 0.8: not tested here
-dependencies = ["labconstrictor-tools>=0.1", "napari", "magicgui", "qtpy", "numpy", "tifffile", "pint"]
+dependencies = ["labconstrictor-tools>=0.1", "napari", "magicgui", "qtpy", "numpy", "tifffile"]
 
 [project.optional-dependencies]
 # The plugin itself installs NO Qt backend (it uses qtpy, so it works with the user's napari). The GUI tests need exactly one,
@@ -52,7 +52,7 @@ ignore = ["E501", "UP031", "UP032", "B905"]
 
 [tool.mypy]
 python_version = "3.11"
-ignore_missing_imports = true   # pint, tifffile and labconstrictor_tools ship no usable stubs (napari, magicgui, qtpy are installed and typed)
+ignore_missing_imports = true   # tifffile and labconstrictor_tools ship no usable stubs (napari, magicgui, qtpy are installed and typed)
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true

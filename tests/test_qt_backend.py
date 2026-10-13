@@ -130,7 +130,13 @@ v.window.resize(1500, 950)
 pump(0.4)
 
 # 3. a run: status text and the results table dock
-layer = v.add_image(np.random.default_rng(1).random((64, 64)).astype("float32") * 1000, name="query")
+# calibrated (SPEC_WRONG_SCIENCE 2.3.1): Kitchen sink's pixel-size field is required, and an image with no unit has none to give it
+layer = v.add_image(
+    np.random.default_rng(1).random((64, 64)).astype("float32") * 1000,
+    name="query",
+    scale=(0.325, 0.325),
+    units="micrometer",
+)
 pump()
 w.gui.required_string.value = "hello"
 w.gui.image.value = layer

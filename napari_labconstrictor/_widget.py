@@ -6,6 +6,7 @@ registry (cached JSON) -> app/tool choosers -> schema -> synthesized signature -
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import tempfile
 import threading
@@ -36,18 +37,14 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from . import _retention, _snapshot
+from . import _calibration, _retention, _snapshot
+from ._calibration import UNSET, USER, Derived, LinkState
 from ._export import channel_file, export_layer, selection_mask
 from ._export import is_set as _is_set
 from ._frame import FrameError
 from ._results import COULD_NOT_DISPLAY, FileInput, ResultPresenter
 from ._schema import Param, Tool, presentation_order, rule_satisfied, signature_from_schema
-from ._units import (
-    TIFF_READ_ERRORS,
-    anisotropy_note,
-    microns_per_pixel_yx,
-    microns_yx_from_tiff_checked,
-)
+from ._units import TIFF_READ_ERRORS, calibration_from_tiff, calibration_of_layer
 from ._workers import WorkerCache
 
 if TYPE_CHECKING:  # annotation only; at runtime napari passes a proxy under the name `napari_viewer`
@@ -63,6 +60,9 @@ OUTCOME_MIN_HEIGHT_PX = 110  # the status/message box: at least a few lines ...
 OUTCOME_MAX_HEIGHT_PX = 320  # ... and at most this tall (longer text scrolls) so it never squeezes the form
 STDERR_TAIL_CHARS = 3000  # worker output kept in the Details report
 _FINISH_TEXT = {"CANCELED": "cancelled"}
+CALIBRATION_KEY = (
+    "_calibration"  # reserved input (SPEC_WRONG_SCIENCE 2.3.4): per-axis pixel size with provenance
+)
 _OMIT = object()  # "leave this parameter out" (None is a real value)
 _NO_RESULT_CODES = ("no_match", "no_result")  # an outcome ("nothing found"), not a fault: shown as a notice
 
@@ -134,6 +134,10 @@ class LabConstrictorWidget(QWidget):
         self.schemas: dict[str, Any] = {}
         self.gui: Any = None  # the magicgui form of the current tool
         self.file_sources: dict[str, Any] = {}  # image parameter -> "or file" widget
+        self.cal_links: dict[str, LinkState] = {}  # PixelSizeOf parameter -> its state (unset / auto / user)
+        self._cal_refresh: dict[str, Any] = (
+            {}
+        )  # PixelSizeOf parameter -> derive its value from the current source again
         self.unset_toggles: dict[str, Any] = {}  # nullable parameter -> "set" checkbox
         self.region_toggles: dict[str, Any] = {}  # RegionOf parameter -> "use the selection" checkbox
         self.channel_boxes: dict[str, Any] = {}  # PickChannel image parameter -> its channel chooser
@@ -368,6 +372,7 @@ class LabConstrictorWidget(QWidget):
             self.gui.native.setParent(None)
             self.gui = None
             self.file_sources = {}
+            self.cal_links, self._cal_refresh = {}, {}
             self.unset_toggles = {}
             self.region_toggles = {}
             self.channel_boxes = {}
@@ -472,12 +477,17 @@ class LabConstrictorWidget(QWidget):
         out and left out of the request."""
         toggles = {}
         for param in tool["inputs"]:
-            if not param.get("nullable") or param["type"] not in (
-                "integer",
-                "float",
-                "string",
-                "choice",
-                "boolean",
+            if (
+                param.get("pixel_size_of")
+                or not param.get("nullable")
+                or param["type"]
+                not in (
+                    "integer",
+                    "float",
+                    "string",
+                    "choice",
+                    "boolean",
+                )
             ):
                 continue
             widget = self.gui[param["name"]]
@@ -795,43 +805,95 @@ class LabConstrictorWidget(QWidget):
                 widget.reset_choices()
 
     def _link_calibration(self, image_name: str, pixel_name: str) -> None:
-        """Pixel-size field follows the layer chosen for its image - until the user edits it."""
+        """The pixel-size field follows the file chosen for its image, else the layer chosen for it, until the person types a value
+        (SPEC_WRONG_SCIENCE 2.2). Its state (unset / auto / user) lives in a `LinkState`; the box only shows it. A source without a
+        calibration clears the field (it never keeps the previous image's value), and a run sends what the state says.
+        """
         image, pixel = self.gui[image_name], self.gui[pixel_name]
-        auto_value = [pixel.value]
         file_edit = self.file_sources.get(image_name)
+        link = LinkState(pixel_name, image_name)
+        self.cal_links[pixel_name] = link
+        self._cal_refresh[pixel_name] = lambda: refresh()
+        pixel.min = 0.0  # a pixel size is positive; the box's lowest position (0) is its "not set" display
+        pixel.native.setDecimals(10)  # the box must not round a calibration such as 0.0001 or 0.5002
+        pixel.native.setSpecialValueText("(not set)")
+        guard = [False]  # True while the host itself sets the box: that is not an edit by the person
+        typing = [False]  # True from a keystroke in the box until that entry is handled
 
-        def sync(*_):
-            if pixel.value != auto_value[0]:
+        def show(value: float | None) -> None:
+            guard[0] = True
+            try:
+                pixel.value = value if value is not None else pixel.min
+            finally:
+                guard[0] = False
+            pixel.tooltip = link.tooltip()
+
+        def refresh(*_: Any) -> None:
+            derived = self._derive_calibration(image, file_edit)
+            link.source_changed(derived)
+            show(link.value)
+
+        def edited(*_: Any) -> None:
+            if guard[0]:
                 return
-            yx = self._detect_calibration(image, file_edit)
-            if yx is not None:
-                auto_value[0] = pixel.value = yx[1]
+            typing[0] = False
+            link.user_edit(pixel.value)
+            if link.state == UNSET:  # cleared: the image's calibration again
+                refresh()
+            else:
+                show(link.user)
 
-        image.changed.connect(sync)
+        pixel.native.setKeyboardTracking(
+            False
+        )  # one edit event per entry, not one per keystroke ("0" on the way to "0.3" is not a clear)
+
+        def typed_text(*_: Any) -> None:
+            typing[0] = True
+
+        def entry_finished() -> None:
+            # Typing the value the box already shows is an edit too (Qt sends no valueChanged for it): the flag, not a comparison, decides
+            if typing[0]:
+                typing[0] = False
+                if not guard[0]:
+                    edited()
+
+        pixel.changed.connect(edited)
+        pixel.native.lineEdit().textEdited.connect(typed_text)
+        pixel.native.editingFinished.connect(entry_finished)
+        image.changed.connect(refresh)
         if file_edit is not None:
-            file_edit.changed.connect(sync)
-        sync()
+            file_edit.changed.connect(refresh)
+        button = mw.PushButton(
+            text="use the image's calibration",
+            tooltip="Forget the value typed above and take the pixel size from the file or image again",
+            gui_only=True,
+        )
+        button.changed.connect(lambda *_: edited_clear())
+        self.gui.insert(list(self.gui).index(pixel) + 1, button)
 
-    def _detect_calibration(self, image: Any, file_edit: Any) -> tuple[float, float] | None:
-        """(y, x) micrometres per pixel of the chosen file, else of the chosen layer, or None; what it found goes to the status line."""
+        def edited_clear() -> None:
+            link.user_edit(None)
+            refresh()
+
+        refresh()
+
+    def _derive_calibration(self, image: Any, file_edit: Any) -> Derived | None:
+        """The calibration of the chosen file, else of the chosen layer (what is exported wins), or None; says what is wrong in the
+        status line. A file that has none is unknown: the open image's value is never used for it."""
         if file_edit is not None and _is_set(file_edit.value):  # calibration stored in the file
-            yx, problem = microns_yx_from_tiff_checked(file_edit.value)
+            calibration, problem = calibration_from_tiff(file_edit.value)
             if problem:
                 self.status.setText("⚠ %s" % problem)
-            note = anisotropy_note(yx) if yx is not None else None
-            if note:
-                self.status.setText(note)
-            return yx
+            elif calibration.note:
+                self.status.setText("⚠ %s" % calibration.note)
+            return Derived(calibration, "file")
         layer = image.value
         if layer is None:
             return None
-        yx, assumed = microns_per_pixel_yx(layer)
-        if yx is not None:
-            self.status.setText(
-                anisotropy_note(yx)
-                or ("calibration assumed to be in µm (layer has no unit)" if assumed else self.status.text())
-            )
-        return yx
+        calibration = calibration_of_layer(layer)
+        if calibration.note:
+            self.status.setText("⚠ %s" % calibration.note)
+        return Derived(calibration, "image")
 
     # ---- run ----------------------------------------------------------
     def _launch(self, form_values: dict[str, Any]) -> None:
@@ -852,6 +914,13 @@ class LabConstrictorWidget(QWidget):
         geometry, taken on the UI thread before anything is exported. Export, worker call, placement and run record read this.
         """
         regions = [name for name, toggle in self.region_toggles.items() if toggle.value]
+        calibration = {}
+        for name, link in self.cal_links.items():
+            if (
+                link.state != USER
+            ):  # the layer's scale or units may have been edited since it was chosen: read it again
+                self._cal_refresh[name]()
+            calibration[name] = {"value": link.value, "entry": link.entry(), "of": link.of}
         layer = None
         if regions and self.viewer is not None:
             from napari.layers import Shapes
@@ -866,6 +935,7 @@ class LabConstrictorWidget(QWidget):
             unset=[name for name, toggle in self.unset_toggles.items() if not toggle.value],
             channels={name: self._picked_channel(name) for name in self.channel_boxes},
             selection_layer=layer,
+            calibration=calibration,
         )
 
     def _prepare_inputs(
@@ -984,6 +1054,13 @@ class LabConstrictorWidget(QWidget):
             exported = self._export_param(param, snapshot, job_dir)
             if exported is not _OMIT:
                 inputs[param["name"]] = exported
+        calibration = {
+            name: picked["entry"]
+            for name, picked in snapshot.calibration.items()
+            if picked["entry"] is not None and inputs.get(name) is not None
+        }
+        if calibration:  # reserved input, like _job_dir: per axis, with provenance; tools never see it
+            inputs[CALIBRATION_KEY] = calibration
         return inputs
 
     def _export_param(self, param: Param, snapshot: _snapshot.RunSnapshot, job_dir: Path) -> Any:
@@ -993,6 +1070,8 @@ class LabConstrictorWidget(QWidget):
         file = snapshot.files.get(name)
         if name in snapshot.regions:  # RegionOf: the selection is the value
             return self._selection_mask(param, snapshot, job_dir)
+        if name in snapshot.calibration:  # PixelSizeOf: what the field's state says, never a stand-in (2.3)
+            return self._calibrated_value(param, snapshot)
         if file is not None:  # file chosen: the worker reads it directly
             return self._export_file_source(param, snapshot, file, job_dir)
         if name in snapshot.unset:  # nullable and not set: omit it
@@ -1008,6 +1087,22 @@ class LabConstrictorWidget(QWidget):
             return str(path)
         if param["type"] in ("table", "file", "folder"):
             return str(value)
+        return value
+
+    def _calibrated_value(self, param: Param, snapshot: _snapshot.RunSnapshot) -> Any:
+        """The value of a linked PixelSizeOf field at the click (SPEC_WRONG_SCIENCE 2.3): the person's entry or the source's calibration.
+        An unset one blocks a required field and sends null for an Optional one; the declared default is never a stand-in.
+        """
+        picked = snapshot.calibration[param["name"]]
+        value = picked["value"]
+        if value is None:
+            if param.get("nullable"):  # Optional[float]: null, nothing is blocked
+                return None
+            raise ValueError(_calibration.CALIBRATION_REQUIRED.format(param=param["name"], of=picked["of"]))
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(
+                "[invalid_parameter] '%s' must be greater than 0 (um per pixel)" % param["label"]
+            )
         return value
 
     def _export_file_source(

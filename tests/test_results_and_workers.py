@@ -21,17 +21,20 @@ _qt = QApplication.instance() or QApplication([])
 
 
 class Calibration(unittest.TestCase):
-    def test_a_layer_with_different_y_and_x_scale_keeps_both(self):
+    def test_a_layer_with_different_y_and_x_scale_is_unknown_and_says_so(self):
+        # SPEC_WRONG_SCIENCE 2.1.5 supersedes "the tool gets X and the person is told": the scalar field is never filled from one axis
         layer = Image(np.zeros((4, 4)), scale=(0.5, 0.25), units=("micrometer", "micrometer"))
-        yx, assumed = _units.microns_per_pixel_yx(layer)
-        self.assertEqual((yx, assumed), ((0.5, 0.25), False))
-        self.assertEqual(_units.microns_per_pixel(layer), (0.25, False))  # a single-value tool gets X ...
-        self.assertIn("Y 0.5", _units.anisotropy_note(yx))  # ... and the user is told
-        self.assertIn("X 0.25", _units.anisotropy_note(yx))
+        calibration = _units.calibration_of_layer(layer)
+        self.assertIsNone(calibration.value)
+        self.assertEqual(calibration.note, "pixels are not square")
+        self.assertEqual(
+            calibration.yx, (0.5, 0.25)
+        )  # both axes are still known (a result is placed with them)
 
     def test_square_pixels_give_no_warning(self):
-        self.assertIsNone(_units.anisotropy_note((0.325, 0.325)))
-        self.assertIsNone(_units.anisotropy_note(None))
+        layer = Image(np.zeros((4, 4)), scale=(0.325, 0.325), units=("micrometer", "micrometer"))
+        self.assertIsNone(_units.calibration_of_layer(layer).note)
+        self.assertEqual(_units.calibration_of_layer(layer).value, 0.325)
 
     def test_a_tiff_with_different_y_and_x_resolution_keeps_both(self):
         path = Path(tempfile.mkdtemp()) / "a.tif"
