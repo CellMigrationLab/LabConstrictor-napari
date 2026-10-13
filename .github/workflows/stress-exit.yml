@@ -6,26 +6,29 @@ on:
 jobs:
   probe:
     timeout-minutes: 40
-    name: probe (${{ matrix.os }})
+    name: probe (${{ matrix.os }}, ${{ matrix.qt }})
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest]
+        qt: [none, pyside6, pyqt6]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
+      - if: matrix.qt != 'none'
+        run: pip install ${{ matrix.qt == 'pyside6' && 'PySide6==6.12.0' || 'PyQt6' }}
       - name: Probe
         shell: bash
         run: |
           cp tmp_probe/exit_probe.py exit_probe.py
           for mode in racy spawned idle; do
             bad=0; codes=""
-            for i in $(seq 1 300); do
-              rc=0; python exit_probe.py $mode > probe.log 2>&1 || rc=$?
+            for i in $(seq 1 150); do
+              rc=0; QT_QPA_PLATFORM=offscreen python exit_probe.py $mode ${{ matrix.qt }} > probe.log 2>&1 || rc=$?
               if [ $rc -ne 0 ]; then bad=$((bad+1)); codes="$codes $rc"; fi
             done
-            echo "PROBE $RUNNER_OS mode=$mode: $bad nonzero exits of 300; codes:$codes"
+            echo "PROBE $RUNNER_OS ${{ matrix.qt }} mode=$mode: $bad nonzero exits of 150; codes:$codes"; [ $bad -eq 0 ] || tail -20 probe.log
           done
