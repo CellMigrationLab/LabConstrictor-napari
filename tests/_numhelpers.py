@@ -56,9 +56,10 @@ def type_text(name, text):
     edit.selectAll()
     if not text:
         QTest.keyClick(edit, Qt.Key.Key_Backspace)  # delete the selection
-    elif text.isascii():
+    elif text.isascii() and len(text) <= 40:
         QTest.keyClicks(edit, text)
-    else:  # QTest cannot press a key that has no ASCII code: such text arrives the way pasted text does
+    else:  # no ASCII key code, or very long: such text arrives the way pasted text does (a key press costs about 20 void Qt calls, which
+        # PySide6 on Python 3.11 pays for in references to None: 5000 keys exhaust them; see _paths._leave)
         edit.insert(text)
     QTest.keyClick(edit, Qt.Key.Key_Return)
 
