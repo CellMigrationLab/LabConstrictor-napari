@@ -5,16 +5,17 @@ registry (cached JSON) -> app/tool choosers -> schema -> synthesized signature -
 
 from __future__ import annotations
 
-import shutil
+import json
 import subprocess
 import tempfile
 import threading
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from labconstrictor_tools import log, registry, runs
+from labconstrictor_tools import log, registry
 from labconstrictor_tools.protocol import JOB_DIR_KEY
 from magicgui import magicgui
 from magicgui import widgets as mw
@@ -35,6 +36,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from . import _retention, _snapshot
 from ._export import channel_file, export_layer, selection_mask
 from ._export import is_set as _is_set
 from ._results import COULD_NOT_DISPLAY, FileInput, ResultPresenter
@@ -146,6 +148,20 @@ class LabConstrictorWidget(QWidget):
         self.presenter: Any = None  # a ResultPresenter once a run has started
         self.last_record: Any = None
         self.last_details = ""
+        self.snapshot: _snapshot.RunSnapshot | None = (
+            None  # the run in progress (or the last one), frozen at the click
+        )
+        self._record: _retention.RunRecord | None = None  # its run record folder (markers)
+        self._results: _retention.ResultsFolder | None = (
+            None  # its results folder, made only when a file must be kept
+        )
+        self._show_problem = ""  # why its results could not be shown completely (goes into the details)
+        self.last_prune: threading.Thread | None = (
+            None  # the thread watching the last `prune` subprocess (tests join it)
+        )
+        self._closed = (
+            False  # True once the widget was closed during the current run: closeEvent already ended that run
+        )
         self._request: dict[str, Any] = {}
         # what the running task was started with (the choosers may change meanwhile)
         self._run_app: Any = None
@@ -499,20 +515,22 @@ class LabConstrictorWidget(QWidget):
             toggles[param["name"]] = toggle
         return toggles
 
-    def _selection_mask(self, param: Param, form_values: dict[str, Any], job_dir: Path) -> str:
-        """The shapes of the selected Shapes layer as a label image (see `_export.selection_mask`)."""
+    def _selection_mask(self, param: Param, snapshot: _snapshot.RunSnapshot, job_dir: Path) -> str:
+        """The shapes of the selection AS THEY WERE AT THE CLICK as a label image (see `_export.selection_mask`)."""
+        name = param["region_of"]
         return selection_mask(
-            self.viewer,
+            snapshot.selection,
             param,
-            self.file_sources.get(param["region_of"]),
-            form_values.get(param["region_of"]),
+            snapshot.files.get(name),
+            snapshot.sources.get(name),
             job_dir,
-            image_label=self._label_of(param["region_of"]),
+            image_label=self._label_of(name, snapshot),
         )
 
-    def _label_of(self, name: str) -> str:
-        """The label the person sees for parameter `name` of the current tool."""
-        return next((p["label"] for p in cast(Tool, self.tool)["inputs"] if p["name"] == name), name)
+    def _label_of(self, name: str, snapshot: _snapshot.RunSnapshot | None = None) -> str:
+        """The label the person sees for parameter `name` (of the tool that was started, when a run snapshot is given)."""
+        tool = snapshot.tool if snapshot is not None else cast(Tool, self.tool)
+        return next((p["label"] for p in tool["inputs"] if p["name"] == name), name)
 
     # ---- presentation hints: group headings, advanced settings, enabled_when ----
     def _apply_presentation(self, tool: Tool) -> None:
@@ -699,7 +717,7 @@ class LabConstrictorWidget(QWidget):
         finally:
             if worker is not None:
                 self._workers.release(app, worker, keep=worker.alive)
-            shutil.rmtree(job_dir, ignore_errors=True)
+            _retention.discard_job_dir(job_dir)
         self._signals.choices.emit((number, name), options)
 
     def _on_choices(self, key: tuple[int, str], options: list[str] | None) -> None:
@@ -821,43 +839,88 @@ class LabConstrictorWidget(QWidget):
         ):  # a run is in progress: never start a second one
             return
         job_dir = Path(tempfile.mkdtemp(prefix="lcin_"))
-        inputs = self._prepare_inputs(form_values, job_dir)
-        if inputs is None:
+        prepared = self._prepare_inputs(form_values, job_dir)
+        if prepared is None:
             return
-        self._begin_run(form_values, inputs, job_dir)
+        inputs, snapshot = prepared
+        self._begin_run(form_values, inputs, job_dir, snapshot)
         self._start_worker(inputs, job_dir)
 
-    def _prepare_inputs(self, form_values: dict[str, Any], job_dir: Path) -> dict[str, Any] | None:
-        """The worker inputs, or None after telling the person why they could not be made (the job dir is removed then)."""
+    def _take_snapshot(self, form_values: dict[str, Any]) -> _snapshot.RunSnapshot:
+        """Freeze the run (SPEC_WRONG_SCIENCE section 4): one record of the form, the layer objects it names and the selection's
+        geometry, taken on the UI thread before anything is exported. Export, worker call, placement and run record read this.
+        """
+        regions = [name for name, toggle in self.region_toggles.items() if toggle.value]
+        layer = None
+        if regions and self.viewer is not None:
+            from napari.layers import Shapes
+
+            layer = next((item for item in self.viewer.layers.selection if isinstance(item, Shapes)), None)
+        return _snapshot.take(
+            self.app_box.value,
+            cast(Tool, self.tool),
+            form_values,
+            files={name: Path(edit.value) for name, edit in self.file_sources.items() if _is_set(edit.value)},
+            regions=regions,
+            unset=[name for name, toggle in self.unset_toggles.items() if not toggle.value],
+            channels={name: self._picked_channel(name) for name in self.channel_boxes},
+            selection_layer=layer,
+        )
+
+    def _prepare_inputs(
+        self, form_values: dict[str, Any], job_dir: Path
+    ) -> tuple[dict[str, Any], _snapshot.RunSnapshot] | None:
+        """(the worker inputs, the run snapshot), or None after telling the person why they could not be made (the job dir is removed)."""
         try:
-            return self._export_inputs(form_values, job_dir)
+            snapshot = self._take_snapshot(form_values)
+            return self._export_inputs(form_values, job_dir, snapshot), snapshot
         except ValueError as error:  # something the user can fix: say it plainly
-            shutil.rmtree(job_dir, ignore_errors=True)
+            _retention.discard_job_dir(job_dir)
             self.status.setText("⚠ %s" % error)
         # BLE001: e.g. the disk is full while saving a layer - clean up, say so, log it
         except Exception as error:  # noqa: BLE001
             log.error("napari: cannot prepare the inputs for %s", self.app_box.value, exc_info=True)
-            shutil.rmtree(job_dir, ignore_errors=True)
+            _retention.discard_job_dir(job_dir)
             self._show_failure("could not prepare the inputs: %s" % error, error)
         return None
 
-    def _begin_run(self, form_values: dict[str, Any], inputs: dict[str, Any], job_dir: Path) -> None:
+    def _begin_run(
+        self,
+        form_values: dict[str, Any],
+        inputs: dict[str, Any],
+        job_dir: Path,
+        snapshot: _snapshot.RunSnapshot | None = None,
+    ) -> None:
         """Remember what this run was started with and get the result presenter and the running state ready."""
+        snapshot = snapshot or self._take_snapshot(form_values)
         inputs[JOB_DIR_KEY] = str(
             job_dir / "out"
         )  # host-owned: removed by the host whatever happens to the worker
         self._job_dir = job_dir
         self._request = {k: v for k, v in inputs.items() if k != JOB_DIR_KEY}
-        self._run_app, self._run_tool = self.app_box.value, self.tool
+        self.snapshot = snapshot
+        self._run_app, self._run_tool = snapshot.app, self.tool
+        self._show_problem = ""
+        self._closed = False
+        self._record = _retention.RunRecord.start(
+            snapshot.app, snapshot.tool_id, snapshot.run_id
+        )  # owner marker first
+        self._results = _retention.ResultsFolder(snapshot.app, snapshot.tool_id)
         shown_inputs = {
             **form_values,
             **{n: FileInput(Path(e.value)) for n, e in self.file_sources.items() if _is_set(e.value)},
         }
-        replace = {o["name"] for o in self._run_tool["outputs"] if o.get("replace")}
+        replace = {o["name"] for o in snapshot.tool["outputs"] if o.get("replace")}
         self.message_label.setVisible(False)
-        images = [p["name"] for p in self._run_tool["inputs"] if p["type"] in ("image", "labels")]
+        images = [p["name"] for p in snapshot.tool["inputs"] if p["type"] in ("image", "labels")]
         self.presenter = ResultPresenter(
-            self.viewer, self._run_app, shown_inputs, replace, self._docks, image_inputs=images
+            self.viewer,
+            snapshot.app,
+            shown_inputs,
+            replace,
+            self._docks,
+            image_inputs=images,
+            snapshot=snapshot,
         )
         self._set_running(True)
         self._started = time.perf_counter()
@@ -888,7 +951,10 @@ class LabConstrictorWidget(QWidget):
             if worker is not None:
                 self._workers.release(self._run_app, worker, keep=False)
             self.task = None
-            shutil.rmtree(job_dir, ignore_errors=True)
+            _retention.discard_job_dir(job_dir)
+            self._end_markers(
+                "failed", {"status": "FAILED", "error": "could not start the worker: %s" % error}
+            )
             self._set_running(False)
             self._show_failure(str(error), error)
 
@@ -901,27 +967,30 @@ class LabConstrictorWidget(QWidget):
         )  # the file holds the full story; its tail may be of other runs
         self.details_button.setEnabled(True)
 
-    def _export_inputs(self, form_values: dict[str, Any], job_dir: Path) -> dict[str, Any]:
-        """Form values -> worker inputs (layers are saved as TIFF; calibration travels as explicit parameters)."""
+    def _export_inputs(
+        self, form_values: dict[str, Any], job_dir: Path, snapshot: _snapshot.RunSnapshot | None = None
+    ) -> dict[str, Any]:
+        """The run snapshot -> worker inputs (layers are saved as TIFF; calibration travels as explicit parameters). The export reads
+        the snapshot, never the live form or the live selection (SPEC_WRONG_SCIENCE 4.3); without one it takes it now.
+        """
+        snapshot = snapshot or self._take_snapshot(form_values)
         inputs = {}
-        for param in cast(Tool, self.tool)["inputs"]:
-            exported = self._export_param(param, form_values, job_dir)
+        for param in snapshot.tool["inputs"]:
+            exported = self._export_param(param, snapshot, job_dir)
             if exported is not _OMIT:
                 inputs[param["name"]] = exported
         return inputs
 
-    def _export_param(self, param: Param, form_values: dict[str, Any], job_dir: Path) -> Any:
+    def _export_param(self, param: Param, snapshot: _snapshot.RunSnapshot, job_dir: Path) -> Any:
         """The worker input for one parameter, or `_OMIT` when it is left out of the request."""
         name = param["name"]
-        value = form_values.get(name)
-        source = self.file_sources.get(name)
-        region = self.region_toggles.get(name)
-        if region is not None and region.value:  # RegionOf: the selection is the value
-            return self._selection_mask(param, form_values, job_dir)
-        if source is not None and _is_set(source.value):  # file chosen: the worker reads it directly
-            return self._export_file_source(param, Path(source.value), job_dir)
-        toggle = self.unset_toggles.get(name)
-        if toggle is not None and not toggle.value:  # nullable and not set: omit it
+        value = snapshot.value(name)
+        file = snapshot.files.get(name)
+        if name in snapshot.regions:  # RegionOf: the selection is the value
+            return self._selection_mask(param, snapshot, job_dir)
+        if file is not None:  # file chosen: the worker reads it directly
+            return self._export_file_source(param, snapshot, file, job_dir)
+        if name in snapshot.unset:  # nullable and not set: omit it
             return _OMIT
         if value is None or (isinstance(value, Path) and str(value) in ("", ".")):
             if param["required"]:
@@ -930,16 +999,18 @@ class LabConstrictorWidget(QWidget):
             return _OMIT
         if param["type"] in ("image", "labels"):
             path = job_dir / (name + ".tif")
-            export_layer(value, self._picked_channel(name), path)
+            export_layer(value, snapshot.channels.get(name), path)
             return str(path)
         if param["type"] in ("table", "file", "folder"):
             return str(value)
         return value
 
-    def _export_file_source(self, param: Param, path: Path, job_dir: Path) -> str:
+    def _export_file_source(
+        self, param: Param, snapshot: _snapshot.RunSnapshot, path: Path, job_dir: Path
+    ) -> str:
         if not path.is_file():
             raise ValueError("[file_not_found] image file not found: %s" % path)
-        picked = self._picked_channel(param["name"])
+        picked = snapshot.channels.get(param["name"])
         if picked is not None:  # PickChannel: the file's chosen channel is written for the worker
             path = channel_file(path, picked, param["label"], job_dir / (param["name"] + ".tif"))
         return str(path)
@@ -1077,48 +1148,141 @@ class LabConstrictorWidget(QWidget):
             task is not self.task
         ):  # a late signal of a run that is no longer the current one: never touch the current run's files
             return
+        if (
+            self._closed
+        ):  # the widget was closed during this run: closeEvent already ended it (markers, worker, files)
+            return
         self.last_task = task
         self.timings["run_wall_s"] = time.perf_counter() - self._started
         self._set_running(False)
-        self._record_run(task)
         healthy = task.status in (
             "COMPLETE",
             "FAILED",
         )  # a cancelled or crashed worker may be mid-task: never reuse it
-        self._workers.release(self._run_app, self.worker, keep=self.reuse_box.isChecked() and healthy)
         if task.status != "COMPLETE":
-            shutil.rmtree(self._job_dir, ignore_errors=True)
+            self._record_run(task)
+            self._workers.release(self._run_app, self.worker, keep=self.reuse_box.isChecked() and healthy)
+            _retention.discard_job_dir(self._job_dir)  # the host's own temporary folder (outside LC_HOME)
             self.status.setText(_unfinished_text(task))
+            self._end_markers(_retention.done_status(task.status, getattr(task, "cancel_requested", False)))
             return
-        summaries = self._show_results(task)
+        summaries, withheld = self._show_results(
+            task
+        )  # also keeps the files that must outlive the job folder (3.4)
+        self._record_run(task)
+        self._workers.release(self._run_app, self.worker, keep=self.reuse_box.isChecked() and healthy)
+        self._end_markers("ok")
         if summaries is None:
             return
-        self._report_success(summaries)
+        self._report_success(summaries, withheld)
         self._clear_after_run()
         self._schedule_choices(CHOICES_AFTER_RUN_MS)
 
-    def _show_results(self, task: Any) -> list[str] | None:
-        """Show every result of a finished task: the summaries, or None after reporting that they could not be shown."""
+    def _show_results(self, task: Any) -> tuple[list[str] | None, list[str]]:
+        """Show every result of a finished task: (the summaries, the sentences for results that were not drawn), or (None, [...]) after
+        reporting that they could not be shown. Then the temporary job folder goes, after every file that is reported has been moved to
+        an owned folder under <LC_HOME>/results (section 3.4): a reported path never points into a folder about to be deleted.
+        """
+        results: list[Any] = []
+        summaries: list[str | None] = []
+        withheld: list[tuple[Any, tuple[str, str]]] = []
         try:
-            return [self.presenter.show(result) for result in task.outputs["results"]]
+            results = list(task.outputs["results"])
+            summaries = [None] * len(results)
+            for index, result in enumerate(results):
+                self._keep_reported_file(
+                    result
+                )  # a FileOut in the job folder is moved first, so the status shows its final path
+                problem = self.presenter.placement_problem(result)
+                if (
+                    problem is not None
+                ):  # its source layer is gone or changed: nothing is drawn (RUN-01, RUN-04)
+                    withheld.append((result, problem))
+                    summaries[index] = ""
+                    continue
+                summaries[index] = self.presenter.show(result)
+            for index, text in enumerate(
+                summaries
+            ):  # not drawn although it was tried: keep the file, say where it is
+                if text and text.startswith(COULD_NOT_DISPLAY):
+                    summaries[index] = self._keep_undisplayed(results[index], text)
+            return [text or "" for text in summaries], self._unavailable_sentences(withheld)
         except Exception as error:  # noqa: BLE001 - some results may already be shown: do not claim success
             log.error("napari: could not show the results of %s", self._run_tool["id"], exc_info=True)
+            for index, result in enumerate(results):  # whatever was not shown stays reachable
+                if index >= len(summaries) or summaries[index] is None:
+                    self._keep_reported_file(result, force=True)
             self._show_failure(
                 "the tool finished but its results could not be shown completely: %s" % error, error
             )
-            return None
+            self._show_problem = self.last_details
+            return None, []
         finally:
-            shutil.rmtree(
-                self._job_dir, ignore_errors=True
-            )  # inputs and outputs share the job dir; results are in the viewer
+            self._discard_job_dir()
 
-    def _report_success(self, summaries: list[str]) -> None:
+    def _keep_reported_file(self, result: Any, force: bool = False) -> Path | None:
+        """Move the file a result reports into an owned results folder when it lies in the job folder and must outlive it: a `file`
+        result always, any other kind only with `force` (it could not be shown). Rewrites `result["path"]`. Files outside the job
+        folder are never moved or modified. None when nothing was moved."""
+        if not isinstance(result, dict) or not isinstance(result.get("path"), str) or self._results is None:
+            return None
+        if result.get("type") != "file" and not force:
+            return None
+        source = Path(result["path"])
+        if not source.is_file() or not _retention.inside(source, self._job_dir):
+            return None
+        moved = self._results.adopt(source)
+        if moved is None:  # the move failed: the job folder is kept so that the reported path stays valid
+            self._keep_job_dir = True
+            return None
+        result["path"] = str(moved)
+        return moved
+
+    def _keep_undisplayed(self, result: Any, text: str) -> str:
+        """A result that could not be shown (too big, unreadable): its file moves to the owned folder and the sentence names that path."""
+        before = result.get("path") if isinstance(result, dict) else None
+        moved = self._keep_reported_file(result, force=True)
+        return text.replace(before, str(moved)) if moved is not None and before else text
+
+    def _unavailable_sentences(self, withheld: list[tuple[Any, tuple[str, str]]]) -> list[str]:
+        """One `target_unavailable` sentence per source that is gone; the files of those results are kept (section 4.4)."""
+        if not withheld or self.snapshot is None:
+            return []
+        for result, _ in withheld:
+            self._keep_reported_file(result, force=True)
+        folder = self._results.folder if self._results is not None else None
+        sentences = []
+        for source, reason in dict.fromkeys(problem for _, problem in withheld):
+            where = folder or next(
+                (Path(r["path"]).parent for r, _ in withheld if r.get("path")), self._job_dir
+            )
+            sentences.append(_snapshot.unavailable_sentence(self.snapshot.run_id, source, reason, where))
+            log.warning("napari: %s (%s)", sentences[-1], _snapshot.TARGET_UNAVAILABLE)
+        return sentences
+
+    def _discard_job_dir(self) -> None:
+        """The temporary job folder goes, unless a file that is reported could not be moved out of it."""
+        if getattr(self, "_keep_job_dir", False):
+            self._keep_job_dir = False
+            log.warning(
+                "napari: keeping %s: a result file could not be moved to %s",
+                self._job_dir,
+                registry.home() / "results",
+            )
+            return
+        _retention.discard_job_dir(self._job_dir)
+
+    def _report_success(self, summaries: list[str], withheld: list[str] | None = None) -> None:
         if self.presenter.messages:
             self.message_label.setText("\n\n".join(self.presenter.messages))
             self.message_label.setVisible(True)
         failed = [s for s in summaries if s and s.startswith(COULD_NOT_DISPLAY)]
         text = "  ".join(s for s in summaries if s)
-        if failed:  # the tool succeeded but part of its output is not in the viewer: not a plain success
+        if (
+            withheld
+        ):  # the tool succeeded but results were not drawn: they are in a folder, and the sentence says which run and where
+            self.status.setText("⚠ " + "  ".join([*withheld, text] if text else withheld))
+        elif failed:  # the tool succeeded but part of its output is not in the viewer: not a plain success
             self.status.setText(
                 "⚠ done in %.1fs, but some results could not be shown  %s"
                 % (self.timings["run_wall_s"], text)
@@ -1126,6 +1290,8 @@ class LabConstrictorWidget(QWidget):
             self.last_details += "\n\nnot shown:\n" + "\n".join(failed)
         else:
             self.status.setText("✔ done in %.1fs  %s" % (self.timings["run_wall_s"], text))
+        if withheld:
+            self.last_details += "\n\nnot drawn:\n" + "\n".join(withheld)
 
     def _clear_after_run(self) -> None:
         """ClearAfterRun parameters go back to their default (or unset) once a run has succeeded."""
@@ -1154,11 +1320,33 @@ class LabConstrictorWidget(QWidget):
         ):  # a kept worker has output of earlier runs: not part of this one
             fresh = total - self._stderr_mark
             stderr = stderr[-fresh:] if fresh > 0 else ""
-        self.last_record = runs.record(
-            self._run_app, self._run_tool["id"], self._request, task, self.timings["run_wall_s"], stderr
+        snapshot = self.snapshot
+        content = {
+            "run_id": snapshot.run_id if snapshot else None,
+            "app": self._run_app,
+            "app_version": (self.apps.get(self._run_app) or {}).get("version"),
+            "tool": self._run_tool["id"],
+            "started_utc": snapshot.started if snapshot else None,
+            "finished_utc": datetime.now(UTC).isoformat(),
+            "seconds": round(self.timings["run_wall_s"], 2),
+            "status": task.status,
+            "error": task.error,
+            "code": task.code,
+            "traceback": task.traceback,
+            "inputs": {k: v for k, v in self._request.items() if k != JOB_DIR_KEY},
+            "results": [
+                {k: v for k, v in r.items() if k != "matrix_yx"} for r in task.outputs.get("results", [])
+            ],
+            "timings": task.outputs.get("timings"),
+            "interpreter": task.outputs.get("diagnostics"),
+            "stderr_tail": stderr[-STDERR_TAIL_CHARS:],
+        }
+        self.last_record = self._finish_record(
+            _retention.done_status(task.status, getattr(task, "cancel_requested", False)), content
         )
         lines = [
             "status: %s" % task.status,
+            "run id: %s" % (snapshot.run_id if snapshot else "-"),
             "run record: %s" % (self.last_record or "(could not be written)"),
         ]
         if task.error:
@@ -1168,8 +1356,36 @@ class LabConstrictorWidget(QWidget):
         if stderr.strip():
             lines += ["", "worker output (tail):", stderr[-STDERR_TAIL_CHARS:]]
         lines += ["", "log file: %s" % log.log_path()]  # not its tail: that would show earlier runs
+        if self._show_problem:  # why the results could not be shown (set before the record is written)
+            lines += ["", self._show_problem]
         self.last_details = "\n".join(lines)
         self.details_button.setEnabled(True)
+
+    def _finish_record(self, status: str, content: dict[str, Any]) -> Path | None:
+        """Write run.json and then the done marker of this run's record. Never raises: a record must not break a run."""
+        if self._record is None:
+            return None
+        try:
+            text = json.dumps(content, indent=2, default=str)
+        except (TypeError, ValueError) as error:
+            log.warning("napari: could not serialize the run record (%s: %s)", type(error).__name__, error)
+            text = json.dumps({"status": content.get("status"), "run_id": content.get("run_id")})
+        return self._record.finish(status, text)
+
+    def _end_markers(self, status: str, content: dict[str, Any] | None = None) -> None:
+        """The run has ended: the record (when this is a run that never produced one, with `content`) and the results folder get their
+        done marker, and only then is `prune` started. Never deletes anything, never raises."""
+        if content is not None:
+            self.last_record = self._finish_record(
+                status,
+                {"run_id": self.snapshot.run_id if self.snapshot else None, "app": self._run_app, **content},
+            )
+        if self._results is not None:
+            self._results.finish(status)
+        app = self._run_app
+        self.last_prune = _retention.start_prune(
+            (self.apps.get(app) or {}).get("python"), self.schemas.get(app)
+        )
 
     def _show_details(self, *_: Any) -> None:
         from qtpy.QtWidgets import QMessageBox
@@ -1183,8 +1399,9 @@ class LabConstrictorWidget(QWidget):
     def closeEvent(self, event: Any) -> None:  # Qt API name
         self._reaper.stop()
         if (
-            self.task is not None and not self.task.done.is_set()
+            self.task is not None and not self.task.done.is_set() and not self._closed
         ):  # closed during a run: stop it, do not leave worker or temp files
+            self._closed = True
             try:
                 self.worker.kill()
             except (
@@ -1192,7 +1409,15 @@ class LabConstrictorWidget(QWidget):
                 subprocess.SubprocessError,
             ):  # best effort while closing: already gone / cannot be signalled
                 log.error("napari: could not stop the worker while closing the widget", exc_info=True)
-            shutil.rmtree(getattr(self, "_job_dir", ""), ignore_errors=True)
+            _retention.discard_job_dir(getattr(self, "_job_dir", ""))
+            self._end_markers(
+                "cancelled",
+                {
+                    "status": "CANCELED",
+                    "error": "the widget was closed while the tool was running",
+                    "inputs": self._request,
+                },
+            )
         self._workers.close_all()
         super().closeEvent(event)
 

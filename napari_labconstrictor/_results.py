@@ -11,6 +11,8 @@ import numpy as np
 from labconstrictor_tools import log
 from qtpy.QtWidgets import QTableWidget, QTableWidgetItem
 
+from ._snapshot import RunSnapshot
+
 if TYPE_CHECKING:  # napari and Qt objects are annotated by name only (no usable stubs)
     from napari import Viewer
     from qtpy.QtWidgets import QWidget
@@ -58,8 +60,10 @@ class ResultPresenter:
         replace: Any = (),
         docks: dict[tuple[str, str], QWidget] | None = None,
         image_inputs: Sequence[str] = (),
+        snapshot: RunSnapshot | None = None,
     ) -> None:
         self.viewer, self.app, self.inputs = viewer, app_name, inputs  # inputs: the layers chosen in the form
+        self.snapshot = snapshot  # the run these results belong to (run id, app, tool, source layers); None in older callers
         self.image_inputs = tuple(image_inputs)  # names of the image/labels parameters, in the tool's order
         self.replace = set(replace)  # output names whose previous result this run replaces (Replace())
         self.docks = docks if docks is not None else {}  # (app, table name) -> dock widget kept between runs
@@ -76,6 +80,49 @@ class ResultPresenter:
             "shapes": self._shapes,
             "file": self._file,
         }
+
+    def _metadata(self) -> dict[str, Any]:
+        """`layer.metadata` of everything drawn: the run id and the app and tool of the SNAPSHOT, never of the widget (RUN-03)."""
+        return self.snapshot.metadata() if self.snapshot is not None else {}
+
+    def _source_names(self, result: Result) -> list[str]:
+        """The inputs a result is placed on: `apply_to` (and `relative_to` of an alignment), else for points and outlines the first
+        image input (PROTOCOL.md). Image and labels results are placed on a source only when they declare `apply_to`.
+        """
+        kind = result.get("type")
+        if kind == "affine":
+            return [n for n in (result.get("apply_to"), result.get("relative_to")) if n]
+        if kind in ("points", "shapes"):
+            name = result.get("apply_to") or next(iter(self.image_inputs), None)
+            return [name] if name else []
+        if kind in (
+            "image",
+            "labels",
+        ):  # the association of an image result is declared in the tool's schema, not in the result
+            name = result.get("apply_to") or self._declared_apply_to(result.get("name"))
+            return [name] if name else []
+        return []
+
+    def _declared_apply_to(self, output_name: Any) -> str | None:
+        """`ApplyTo` that the tool declared for its output `output_name` (schema `display.apply_to`), else None."""
+        if self.snapshot is None:
+            return None
+        for output in self.snapshot.tool.get("outputs", []):
+            if output.get("name") == output_name:
+                return (output.get("display") or {}).get("apply_to")
+        return None
+
+    def placement_problem(self, result: Any) -> tuple[str, str] | None:
+        """(name of the source, CLOSED or RESIZED) when the source layer of this result is no longer the one that was exported, else
+        None (SPEC_WRONG_SCIENCE 4.4). Such a result is not drawn: nothing may land on another image. A file input has no layer and is
+        never a problem here. Without a snapshot (an old caller) nothing is checked."""
+        if self.snapshot is None or self.viewer is None or not isinstance(result, dict):
+            return None
+        for name in self._source_names(result):
+            reason = self.snapshot.problem_with(name, self.viewer.layers)
+            if reason is not None:
+                return self.snapshot.sources[name].name, reason
+        return None
 
     def show(self, result: Any) -> str:
         kind = result.get("type", "<no type>") if isinstance(result, dict) else "<not an object>"
@@ -136,9 +183,10 @@ class ResultPresenter:
             kind = type(old).__name__
             if kind == ("Labels" if result["type"] == "labels" else "Image") and old.data.ndim == data.ndim:
                 old.data = data  # same layer: the view, contrast and position the user chose stay
+                old.metadata = {**old.metadata, **self._metadata()}  # ... but it now belongs to this run
                 return
             self.viewer.layers.remove(old)
-        add(data, name=name)
+        add(data, name=name, metadata=self._metadata())
 
     def _affine(self, result: Result) -> None:
         source = self.inputs[result["apply_to"]]
@@ -156,6 +204,7 @@ class ResultPresenter:
         self.viewer.add_image(
             source.data,
             name=name,
+            metadata=self._metadata(),
             affine=matrix,
             scale=(1, 1),
             colormap="magenta",
@@ -191,6 +240,10 @@ class ResultPresenter:
                     error,
                 )
                 self.docks.pop(key, None)
+        if self.snapshot is not None:
+            widget.setProperty(
+                "labconstrictor_run_id", self.snapshot.run_id
+            )  # a dock is not a layer: the run id is a Qt property
         self.viewer.window.add_dock_widget(widget, name=result["name"], area="bottom")
         self.docks[key] = widget
         shown = (
@@ -220,6 +273,7 @@ class ResultPresenter:
             name=name,
             properties=properties or None,
             scale=scale,
+            metadata=self._metadata(),
             size=POINT_SIZE,
             face_color="yellow",
             border_color="black",
@@ -257,10 +311,10 @@ class ResultPresenter:
         if polygons:
             self.viewer.add_shapes(
                 polygons, shape_type="polygon", name=name, properties=properties or None, scale=scale,
-                edge_color="yellow", face_color="transparent", edge_width=OUTLINE_EDGE_WIDTH,
+                metadata=self._metadata(), edge_color="yellow", face_color="transparent", edge_width=OUTLINE_EDGE_WIDTH,
             )  # fmt: skip
         else:
-            self.viewer.add_shapes(name=name, scale=scale)
+            self.viewer.add_shapes(name=name, scale=scale, metadata=self._metadata())
         if total > MAX_SHAPES:
             self.messages.append(
                 "**%s**: showing the first %d of %d outlines." % (result["name"], MAX_SHAPES, total)

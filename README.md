@@ -90,10 +90,12 @@ Failures appear in the status line; **Details...** shows the error, traceback, w
 
 Every run leaves a record, `<LC_HOME>/runs/<time>_<app>_<tool>/run.json` (`LC_HOME` is `~/.labconstrictor` unless the environment variable says otherwise). It holds the app, tool, status, error, inputs, results, timings and the tail of the worker's output.
 
-What the plugin does today about cleanup:
+What the plugin does about cleanup (rules: section 3 of [SPEC_WRONG_SCIENCE](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/SPEC_WRONG_SCIENCE.md)):
 
-- The plugin writes its run records with the LabConstrictor-Tools library. With the Tools installed from the main archive above (a Tools without the retention feature does not have this), that call marks each record with the owner and done marker files and prunes old run records itself: the newest 50 finished records are kept. Only folders that carry both marker files are ever removed; folders you made yourself, older folders without markers, and folders of a run that has not finished are never touched.
-- The plugin does **not** start `labconstrictor-tools prune` itself yet, and it does not write results under `<LC_HOME>/results`: it uses temporary folders for inputs and outputs and removes them after the run (results stay in the viewer). The newest-20 rule for result folders therefore applies to results written by the Tools command line, not to napari runs.
+- **The plugin never deletes anything under `<LC_HOME>/runs` or `<LC_HOME>/results`.** It only creates folders there and marks them. When a run starts it makes the run record folder and writes `.lc-owner.json` first; when the run has ended (finished, failed or cancelled; closing the widget during a run counts as cancelled) it writes `run.json` and then `.lc-done.json` last, with the status `ok`, `failed` or `cancelled`. A run that is still going, or whose napari crashed, has no done file and is never cleaned up.
+- **Result files.** Results stay in the viewer, and the temporary folders for inputs and outputs (`lcin_*`, outside `<LC_HOME>`) are removed after the run. Before they are removed, every file a tool reports (`FileOut`) that lies in that temporary folder, and every image or labels result that could not be shown (for example one above the display limit), is moved to a results folder `<LC_HOME>/results/<YYYYMMDDTHHMMSS>_<6 hex>_<app>_<tool>` (marked the same way), and the status shows that path. A folder is only made when there is a file to keep; files outside the temporary folder are never moved or modified. If a file cannot be moved, the temporary folder is kept so that the reported path stays valid.
+- **Cleanup is done by LabConstrictor-Tools, started by the plugin.** After the done marker is written, the plugin starts `<the app's Python> -m labconstrictor_tools prune` as a separate process, in the background: the widget does not wait for it, ignores its exit code, and writes a failure to the shared log. `prune` keeps the newest 20 finished results folders and the newest 50 finished run records and removes older ones, but only folders that carry both marker files. Folders you made yourself, older folders without markers, folders of a run that has not finished, links and anything outside the two folders are never touched.
+- If the app's `labconstrictor-tools` is too old to have the `prune` command (its schema does not list the feature `retention_prune`), the plugin starts nothing, writes one line to the shared log and deletes nothing; the folders then pile up until you update the app's Tools. The plugin never falls back to deleting them itself.
 - You can run the cleanup yourself: `labconstrictor-tools prune --dry-run` lists what it would remove and changes nothing; `labconstrictor-tools prune` removes it. The full rules are in section 3 of [SPEC_WRONG_SCIENCE](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/SPEC_WRONG_SCIENCE.md).
 
 ## Current status
@@ -112,7 +114,7 @@ These are examples, not a list of applications permitted to connect. Choose tool
 
 ## Development
 
-The widget lives in `napari_labconstrictor/_widget.py`, with schema conversion in `_schema.py`, result presentation in `_results.py`, units and calibration in `_units.py`, layer/file export in `_export.py`, the worker cache in `_workers.py` and the npe2 manifest in `napari.yaml`.
+The widget lives in `napari_labconstrictor/_widget.py`, with schema conversion in `_schema.py`, result presentation in `_results.py`, units and calibration in `_units.py`, layer/file export in `_export.py`, the frozen run (run identity) in `_snapshot.py`, run records, result folders, markers and the `prune` subprocess in `_retention.py`, the worker cache in `_workers.py` and the npe2 manifest in `napari.yaml`.
 
 Install one Qt backend per environment, through its test extra (never both in one environment), and LabConstrictor-Tools:
 
@@ -125,6 +127,9 @@ xvfb-run -a python test_widget.py             # on Linux without a display; else
 xvfb-run -a python test_interactions.py
 xvfb-run -a python test_region.py
 xvfb-run -a python test_messages_points.py
+xvfb-run -a python test_retention_markers.py     # run records, markers, the prune subprocess (a recorder), nothing deleted by the plugin
+xvfb-run -a python test_retention_prune_real.py  # the real `labconstrictor-tools prune` against a private LC_HOME
+xvfb-run -a python test_run_identity.py          # RUN-01..06: the run is frozen at the click
 ```
 
 Every `tests/test_*.py` is a standalone script; CI runs them all in a loop (a new test is picked up without editing the workflow). `scripts/check_qt_backend.sh pyqt6|pyside6` repeats the Qt backend check in a brand-new virtualenv (Linux, needs `xvfb-run`). The tests use the synthetic example application of LabConstrictor-Tools in a private registry, so no real scientific application is needed.
