@@ -4,8 +4,8 @@ record"). No Qt call is made: the content, its text, the done status and the ver
 * The bytes of `run.json` are the ones the plugin wrote before it called Tools (OLD_CONTENT below is that code, frozen), for every way a
   run can end, with `_calibration` under `inputs` (SPEC_WRONG_SCIENCE 2.3.4) whether or not the installed Tools copies it.
 * The `.lc-done.json` status of every task status is the one SPEC_WRONG_SCIENCE 3.2 decides (a crash after Cancel is cancelled).
-* A Tools without the three helpers is refused at import with a sentence that says what to install (rc.1 and rc.2 report the same
-  version, so the helpers are looked for, not the version).
+* A Tools below the minimum version (v0.2.0-rc.1 and rc.2 both report 0.2.0rc1) or without the three helpers is refused at import with
+  a sentence that says what to install; each check alone is enough to refuse.
 """
 
 import json
@@ -187,33 +187,62 @@ class ToolsVersionCheck(unittest.TestCase):
 
     def test_a_tools_without_a_helper_gets_a_sentence_that_says_what_to_do(self):
         old = SimpleNamespace(done_status=lambda *a: "ok")  # what v0.2.0-rc.1 has of the three: none of them
-        problem = _retention.tools_problem(old)
+        problem = _retention.tools_problem(
+            old, installed=_retention.TOOLS_MINIMUM
+        )  # the version alone would pass
         self.assertIsNotNone(problem)
-        for text in ("runs.build_record", "runs.record_json", "v0.2.0-rc.2", "0.2.0rc1", "update"):
+        for text in ("runs.build_record", "runs.record_json", "v0.3.0-alpha.1", "0.3.0a1", "update Tools"):
             self.assertIn(text, problem)
         self.assertNotIn("runs.done_status", problem)  # it has that one
         with self.assertRaises(ImportError) as caught:
             _retention.require_run_helpers(old)
-        self.assertEqual(str(caught.exception), problem)
+        self.assertIn("update Tools to v0.3.0-alpha.1 or newer (version 0.3.0a1)", str(caught.exception))
+
+    def test_rc1_and_rc2_are_refused_by_their_version_even_with_the_helpers(self):
+        for installed in (
+            "0.2.0rc1",
+            "0.2.0",
+            "0.1.0",
+        ):  # rc.2 has the helpers and reports 0.2.0rc1
+            with self.subTest(installed=installed):
+                problem = _retention.tools_problem(tools_runs, installed=installed)
+                self.assertIsNotNone(problem)
+                self.assertIn("update Tools to v0.3.0-alpha.1 or newer (version 0.3.0a1)", problem)
+                self.assertIn(installed, problem)
+                self.assertNotIn("has no runs.", problem)  # the helpers are there: only the version refuses
+        for installed in ("0.3.0a1", "0.3.0a2", "0.3.0b1", "0.3.0", "0.4.1"):
+            with self.subTest(installed=installed):
+                self.assertIsNone(_retention.tools_problem(tools_runs, installed=installed))
 
     def test_a_helper_that_is_not_callable_counts_as_missing(self):
         broken = SimpleNamespace(build_record=None, record_json=str, done_status=str)
         self.assertIn("runs.build_record", _retention.tools_problem(broken))
 
-    def test_the_plugin_refuses_to_load_with_such_a_tools(self):
+    def _import_with(self, patch):
         code = (
             "import sys; sys.path.insert(0, %r)\n"
-            "import labconstrictor_tools.runs as r\n"
-            "del r.build_record\n"  # the module of rc.1 as the plugin sees it
-            "import napari_labconstrictor._retention\n" % str(ROOT)
+            "import labconstrictor_tools.runs as r, labconstrictor_tools._version as v\n"
+            "%s\n"
+            "import napari_labconstrictor._retention\n" % (str(ROOT), patch)
         )
-        run = subprocess.run(
+        return subprocess.run(
             [sys.executable, "-c", code], capture_output=True, text=True, env=dict(os.environ)
         )
+
+    def test_the_plugin_refuses_to_load_with_a_tools_without_a_helper(self):
+        run = self._import_with("del r.build_record")  # the module of rc.1 as the plugin sees it
         self.assertNotEqual(run.returncode, 0)
         self.assertIn("ImportError", run.stderr)
         self.assertIn("runs.build_record", run.stderr)
-        self.assertIn("v0.2.0-rc.2", run.stderr)
+        self.assertIn("v0.3.0-alpha.1", run.stderr)
+
+    def test_the_plugin_refuses_to_load_with_the_version_of_rc2(self):
+        run = self._import_with(
+            "v.__version__ = '0.2.0rc1'"
+        )  # rc.2: the helpers exist, the version is 0.2.0rc1
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("ImportError", run.stderr)
+        self.assertIn("update Tools to v0.3.0-alpha.1 or newer (version 0.3.0a1)", run.stderr)
 
     def test_the_minimum_in_pyproject_is_the_one_in_the_message(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

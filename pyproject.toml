@@ -9,11 +9,11 @@ description = "Run installed LabConstrictor apps from napari (one generic widget
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"   # napari 0.8+ needs 3.11+; this is the tested baseline (CI: 3.11). Python 3.10 means napari < 0.8: not tested here
-# labconstrictor-tools: >=0.2.0rc1 is the best a version specifier can say. v0.2.0-rc.1 and v0.2.0-rc.2 both report 0.2.0rc1, and only rc.2 and
-# later have runs.build_record / record_json / done_status; Tools has no `features` id for them. The plugin therefore looks for the three
-# functions when it loads (_retention.require_run_helpers) and refuses with a sentence that says what to install. A direct tag URL is
-# not allowed in a published wheel. Install Tools from the tag v0.2.0-rc.2 or newer (CI installs its main).
-dependencies = ["labconstrictor-tools>=0.2.0rc1", "napari", "magicgui", "qtpy", "numpy", "tifffile"]
+# labconstrictor-tools >=0.3.0a1 (tag v0.3.0-alpha.1): the run-record helpers (runs.build_record / record_json / done_status) came in
+# v0.2.0-rc.2, which still reports 0.2.0rc1 like rc.1, so no specifier could name them; 0.3.0a1 is the first version string that does.
+# The plugin also looks for the three functions when it loads (_retention.require_run_helpers). A direct tag URL is not allowed in a
+# published wheel. Keep this equal to _retention.TOOLS_MINIMUM (tests/test_run_record.py).
+dependencies = ["labconstrictor-tools>=0.3.0a1", "napari", "magicgui", "qtpy", "numpy", "tifffile"]
 
 [project.optional-dependencies]
 # The plugin itself installs NO Qt backend (it uses qtpy, so it works with the user's napari). The GUI tests need exactly one,

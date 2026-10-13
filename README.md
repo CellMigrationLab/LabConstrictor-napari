@@ -76,7 +76,7 @@ python -m pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/a
 python -m pip install https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/heads/main.zip
 ```
 
-**Which Tools:** the plugin needs LabConstrictor-Tools **v0.2.0-rc.2 or newer** (the `main` archive above is). Tools v0.2.0-rc.1 reports the same version, `0.2.0rc1`, but lacks `runs.build_record`, `runs.record_json` and `runs.done_status`, which the plugin uses to write `run.json` and the done marker exactly as Tools does; the plugin checks for them when it loads and, with an older Tools, refuses to load with a message that says so (update Tools to fix it). `pip` can only require `labconstrictor-tools>=0.2.0rc1`, which rc.1 also satisfies, hence the check.
+**Which Tools:** the plugin needs LabConstrictor-Tools **v0.3.0-alpha.1 or newer** (version `0.3.0a1`; the `main` archive above is). It uses `runs.build_record`, `runs.record_json` and `runs.done_status` to write `run.json` and the done marker exactly as Tools does. Those came in v0.2.0-rc.2, which reports the same version as rc.1 (`0.2.0rc1`), so `pip` requires `labconstrictor-tools>=0.3.0a1`, and the plugin also checks the version and the three functions when it loads: with an older Tools it refuses to load with a message that says to update Tools.
 
 Neither is on PyPI yet. These are source archives, so no `git` program is needed (with git you can use `git+https://github.com/CellMigrationLab/<repository>` instead).
 

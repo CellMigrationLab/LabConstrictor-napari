@@ -43,7 +43,10 @@ PRUNE_TIMEOUT_S = (
     900  # a prune that takes longer than this is stopped (it is safe to stop: the next one finishes the job)
 )
 _NAME_LIMIT = 64
-TOOLS_MINIMUM = "0.2.0rc1"  # the version string of the first Tools that has the run-record helpers (and of rc.1, which lacks them)
+TOOLS_MINIMUM = (
+    "0.3.0a1"  # the Tools version string (tag v0.3.0-alpha.1) the plugin needs; pyproject says the same
+)
+TOOLS_MINIMUM_TAG = "v0.3.0-alpha.1"
 _RUN_HELPERS = (
     "build_record",
     "record_json",
@@ -51,24 +54,34 @@ _RUN_HELPERS = (
 )  # additive functions of labconstrictor_tools.runs (docs/PROTOCOL.md)
 
 
-def tools_problem(runs_module: Any = tools_runs) -> str | None:
-    """None when the installed labconstrictor-tools has the run-record helpers this plugin calls, else one sentence for the person.
-
-    A version number cannot tell: v0.2.0-rc.1 and v0.2.0-rc.2 both report `0.2.0rc1`, and Tools lists no `features` id for these
-    helpers (docs/PROTOCOL.md, "There is no `features` id for them"). So the helpers themselves are looked for.
-    """
-    missing = [name for name in _RUN_HELPERS if not callable(getattr(runs_module, name, None))]
-    if not missing:
-        return None
+def _installed_version() -> str:
     try:
-        from labconstrictor_tools._version import __version__ as installed
+        from labconstrictor_tools._version import __version__
+
+        return str(__version__)
     except ImportError:
-        installed = "of unknown version"
+        return ""
+
+
+def tools_problem(runs_module: Any = tools_runs, installed: str | None = None) -> str | None:
+    """None when the installed labconstrictor-tools is new enough and has the run-record helpers this plugin calls, else one sentence.
+
+    Two checks, because each alone can be wrong: the version (a Tools below TOOLS_MINIMUM, which includes v0.2.0-rc.1 and rc.2, both
+    `0.2.0rc1`) and the helpers themselves (Tools lists no `features` id for them, docs/PROTOCOL.md), which name the real need.
+    """
+    from labconstrictor_tools.compat import parse_version
+
+    version = _installed_version() if installed is None else installed
+    parsed, wanted = parse_version(version), parse_version(TOOLS_MINIMUM)
+    too_old = parsed is not None and wanted is not None and parsed < wanted
+    missing = [name for name in _RUN_HELPERS if not callable(getattr(runs_module, name, None))]
+    if not too_old and not missing:
+        return None
+    lacks = " and has no runs.%s" % ", runs.".join(missing) if missing else ""
     return (
-        "napari-labconstrictor needs a labconstrictor-tools that has runs.%s (the installed one, %s, does not): update it, "
-        "to the tag v0.2.0-rc.2 or newer (v0.2.0-rc.1 reports the same version %s but lacks them), e.g. "
-        "pip install -U git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
-        % (", runs.".join(missing), installed, TOOLS_MINIMUM)
+        "napari-labconstrictor needs labconstrictor-tools %s or newer (the installed one is %s%s): update Tools to %s or newer "
+        "(version %s), e.g. pip install -U git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
+        % (TOOLS_MINIMUM, version or "of unknown version", lacks, TOOLS_MINIMUM_TAG, TOOLS_MINIMUM)
     )
 
 
