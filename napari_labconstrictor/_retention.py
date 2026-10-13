@@ -17,11 +17,13 @@ refuses anything that is, contains or lies inside `<LC_HOME>/results` or `<LC_HO
 
 from __future__ import annotations
 
+import atexit
 import re
 import shutil
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -300,9 +302,45 @@ def prune_argv(python: str) -> list[str]:
     return [python, "-m", "labconstrictor_tools", "prune"]
 
 
+# The prune watchers that are running: (thread, "the subprocess exists now" event). The widget and the test scripts wait on these before
+# the process ends: a process that ends (`ExitProcess`, `os._exit`) while another thread is inside `CreateProcess` crashes with an access
+# violation on Windows (the exit code is then that crash, not the code that was asked for).
+_PRUNES: list[tuple[threading.Thread, threading.Event]] = []
+_PRUNES_LOCK = threading.Lock()
+PRUNE_SPAWN_WAIT_S = 10.0  # how long closing the widget (or leaving the process) waits for a `prune` that is still being started
+
+
+def _running_prunes() -> list[tuple[threading.Thread, threading.Event]]:
+    with _PRUNES_LOCK:
+        return list(_PRUNES)
+
+
+def wait_spawned(timeout: float = PRUNE_SPAWN_WAIT_S) -> bool:
+    """Wait until every `prune` that was started has its subprocess (or has failed to make one). It does NOT wait for `prune` to finish:
+    from then on the subprocess is a separate process (its own session) that closing napari does not stop. True when none is still being
+    started. Called when the widget closes and when the interpreter exits, so no thread is inside `CreateProcess` / `fork` at that moment.
+    """
+    end = time.monotonic() + timeout
+    return all(spawned.wait(max(0.0, end - time.monotonic())) for _, spawned in _running_prunes())
+
+
+def wait_idle(timeout: float = PRUNE_TIMEOUT_S) -> bool:
+    """Wait until every `prune` that was started has ended and its watcher thread is gone (the test scripts do this before they leave).
+    True when nothing is running any more."""
+    end = time.monotonic() + timeout
+    for thread, _ in _running_prunes():
+        thread.join(max(0.0, end - time.monotonic()))
+        if thread.is_alive():
+            return False
+    return True
+
+
+atexit.register(wait_spawned)  # an interpreter that ends normally never ends inside the start of a subprocess
+
+
 def start_prune(python: Any, schema: Any) -> threading.Thread | None:
     """Start `prune` in a subprocess without blocking and without ever raising. Returns the thread that watches it (None when nothing
-    was started). Call it after the done marker is written."""
+    was started). Call it after the done marker is written. The thread never touches Qt."""
     try:
         if not can_prune(schema):
             log.info(
@@ -316,16 +354,37 @@ def start_prune(python: Any, schema: Any) -> threading.Thread | None:
             )
             return None
         argv = prune_argv(python)
-        thread = threading.Thread(target=_run_prune, args=(argv,), name="lc-prune", daemon=True)
-        thread.start()
+        spawned = threading.Event()
+        thread = threading.Thread(target=_watch_prune, args=(argv, spawned), name="lc-prune", daemon=True)
+        with _PRUNES_LOCK:
+            _PRUNES.append((thread, spawned))
+        try:
+            thread.start()
+        except BaseException:
+            _forget_prune(thread)
+            raise
         return thread
     except Exception as error:  # noqa: BLE001 - cleanup must never break the GUI, whatever goes wrong
         log.warning("napari: could not start the cleanup (%s: %s)", type(error).__name__, error)
         return None
 
 
-def _run_prune(argv: list[str]) -> None:
-    """Runs in its own thread: the exit code is not an answer for the person, a failure is a line in the log."""
+def _forget_prune(thread: threading.Thread) -> None:
+    with _PRUNES_LOCK:
+        _PRUNES[:] = [entry for entry in _PRUNES if entry[0] is not thread]
+
+
+def _watch_prune(argv: list[str], spawned: threading.Event) -> None:
+    try:
+        _run_prune(argv, spawned)
+    finally:
+        spawned.set()  # also when the subprocess could not be made: nobody waits for it
+        _forget_prune(threading.current_thread())
+
+
+def _run_prune(argv: list[str], spawned: threading.Event) -> None:
+    """Runs in its own thread: the exit code is not an answer for the person, a failure is a line in the log. `spawned` is set as soon as
+    the subprocess exists (or could not be made)."""
     try:
         options: dict[str, Any] = {}
         if sys.platform == "win32":
@@ -334,17 +393,24 @@ def _run_prune(argv: list[str]) -> None:
             options["start_new_session"] = (
                 True  # not part of napari's process group: closing napari does not stop it
             )
-        done = subprocess.run(  # noqa: S603 - the app's own interpreter, a fixed argument list, no shell
-            argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=PRUNE_TIMEOUT_S, check=False, **options,
-        )  # fmt: skip
-        if done.returncode != 0:
-            log.warning(
-                "napari: the cleanup %s ended with exit code %s: %s",
-                argv,
-                done.returncode,
-                (done.stderr or done.stdout)[-500:],
-            )
+        with subprocess.Popen(  # noqa: S603 - the app's own interpreter, a fixed argument list, no shell
+            argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            encoding="utf-8", errors="replace", **options,
+        ) as process:  # fmt: skip
+            spawned.set()
+            try:
+                stdout, stderr = process.communicate(timeout=PRUNE_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                raise
+            if process.returncode != 0:
+                log.warning(
+                    "napari: the cleanup %s ended with exit code %s: %s",
+                    argv,
+                    process.returncode,
+                    (stderr or stdout)[-500:],
+                )
     except subprocess.TimeoutExpired:
         log.warning("napari: the cleanup %s took longer than %d s and was stopped", argv, PRUNE_TIMEOUT_S)
     except Exception as error:  # noqa: BLE001 - a missing interpreter, a bad path: logged, never raised
