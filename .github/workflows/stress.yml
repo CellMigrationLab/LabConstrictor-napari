@@ -10,25 +10,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 40, shard: 1 }
-          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 40, shard: 2 }
-          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 40, shard: 3 }
-          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 40, shard: 4 }
-          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 40, shard: 5 }
-          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 40, shard: 6 }
-          - { os: windows-latest, qt: pyqt6, script: test_async_close.py, n: 40, shard: 1 }
-          - { os: windows-latest, qt: pyqt6, script: test_async_close.py, n: 40, shard: 2 }
-    runs-on: ${{ matrix.os }}
+        shard: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
+    runs-on: windows-latest
     env:
-      LC_EXPECT_QT: ${{ matrix.qt == 'pyqt6' && 'PyQt6' || 'PySide6' }}
+      LC_EXPECT_QT: PySide6
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11", cache: pip, cache-dependency-path: pyproject.toml }
-      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-${{ matrix.qt }}]"
+      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-pyside6]" minidump
+      - name: Crash dumps (WER LocalDumps, mini)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path D:\dumps | Out-Null
+          $k = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps"
+          New-Item -Path $k -Force | Out-Null
+          New-ItemProperty -Path $k -Name DumpFolder -Value "D:\dumps" -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $k -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $k -Name DumpCount -Value 20 -PropertyType DWord -Force | Out-Null
       - name: Mesa llvmpipe software OpenGL (Windows)
-        if: runner.os == 'Windows'
         shell: bash
         env:
           MESA_VERSION: "24.2.7"
@@ -45,12 +45,18 @@ jobs:
         shell: bash
         working-directory: tests
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then export QT_OPENGL=software; fi
           bad=0; codes=""
-          for i in $(seq 1 ${{ matrix.n }}); do
-            rc=0; python ${{ matrix.script }} > "run_$i.log" 2>&1 || rc=$?
+          for i in $(seq 1 40); do
+            rc=0; python test_async_close.py > "run_$i.log" 2>&1 || rc=$?
             codes="$codes $rc"
-            if [ $rc -ne 0 ]; then bad=$((bad+1)); echo "::group::run $i exit $rc"; tail -40 "run_$i.log"; echo "::endgroup::"; fi
+            if [ $rc -ne 0 ]; then bad=$((bad+1)); echo "::group::run $i exit $rc"; tail -60 "run_$i.log"; echo "::endgroup::"; fi
           done
-          echo "STRESS ${{ matrix.script }} ${{ matrix.os }} ${{ matrix.qt }}: $bad failed of ${{ matrix.n }}; exit codes:$codes"
-          [ $bad -eq 0 ]
+          echo "STRESS test_async_close.py shard ${{ matrix.shard }}: $bad failed of 40; exit codes:$codes"
+          echo "$bad" > ../bad.txt
+      - name: Dumps
+        if: always()
+        shell: bash
+        run: |
+          ls -la /d/dumps || true
+          for f in /d/dumps/*.dmp; do [ -f "$f" ] && python tmp_probe/dump_info.py "$f"; done
+          [ "$(cat bad.txt)" = "0" ]
