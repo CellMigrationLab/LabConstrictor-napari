@@ -107,7 +107,10 @@ class RunJson(unittest.TestCase):
         record = _retention.RunRecord.start(APP, TOOL, SNAPSHOT.run_id)
         self.assertIsNotNone(record.folder)
         record.finish("failed", tools_runs.record_json(new_content(t, stderr, keep_inputs=("_calibration",))))
-        self.assertEqual((record.folder / "run.json").read_bytes(), old.encode("utf-8"))
+        expected = old.replace(
+            "\n", os.linesep
+        )  # write_text translates newlines the way the platform does, now and before
+        self.assertEqual((record.folder / "run.json").read_bytes(), expected.encode("utf-8"))
 
     def test_keys_come_in_the_old_order_and_the_job_folder_and_matrix_are_left_out(self):
         content = new_content(RUNS["complete"], "")
