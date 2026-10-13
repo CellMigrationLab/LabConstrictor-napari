@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:  # napari and magicgui ship no usable stubs here: their objects are annotated by name only
-    from magicgui.widgets import FileEdit
-    from napari import Viewer
-    from napari.layers import Image, Labels, Shapes
+    from napari.layers import Image, Labels
+
+    from ._snapshot import SelectionRef, SourceRef
 
 MAX_EXPORT_BYTES = 4 * 1024**3  # refuse to write a layer larger than this to a temporary TIFF
 MAX_REGION_OBJECTS = 65_535  # shapes in a RegionOf selection: the labels of the region image are 16 bit (same limit as Fiji and QuPath)
@@ -21,65 +21,65 @@ def is_set(path: Any) -> bool:
     return path is not None and str(path) not in ("", ".")
 
 
-def _selected_shapes_layer(viewer: Viewer, label: str) -> Shapes:
-    from napari.layers import Shapes
-
-    layer = next((item for item in viewer.layers.selection if isinstance(item, Shapes)), None)
-    if layer is None:
-        raise ValueError(
-            "'%s': select a Shapes layer in the layer list, or untick 'use the selection'" % label
-        )
-    if len(layer.data) == 0:
-        raise ValueError("'%s': the selected Shapes layer '%s' has no shapes" % (label, layer.name))
-    return layer
-
-
 def _region_image_shape(
-    label: str, image_label: str, source: FileEdit | None, image: Image | Labels | None
+    label: str, image_label: str, file: Path | None, image: SourceRef | None
 ) -> tuple[tuple[int, ...], tuple[float, ...]]:
-    """(yx shape, yx scale) of the open layer a region belongs to. The selection is drawn on a layer, so an image given as a
-    file is refused: nothing says where the selection lies on an unknown file."""
-    if source is not None and is_set(source.value):
+    """(yx shape, yx scale) of the open layer a region belongs to, as the run snapshot recorded them at the click. The selection is
+    drawn on a layer, so an image given as a file is refused: nothing says where the selection lies on an unknown file.
+    """
+    if file is not None:
         raise ValueError(
             "'%s': the selection belongs to an open image, but a file was chosen for '%s': open the image, or untick the selection"
             % (label, image_label)
         )
     if image is not None:
-        shape = (image.data[0] if getattr(image, "multiscale", False) else image.data).shape[-2:]
-        return shape, tuple(image.scale[-2:])
+        return image.shape[-2:], image.scale[-2:]
     raise ValueError("'%s': choose the image it belongs to first" % label)
 
 
 def selection_mask(
-    viewer: Viewer,
+    selection: SelectionRef | None,
     param: dict[str, Any],
-    source: FileEdit | None,
-    image: Image | Labels | None,
+    file: Path | None,
+    image: SourceRef | None,
     job_dir: Path,
     image_label: str | None = None,
 ) -> str:
-    """The shapes of the selected Shapes layer as a label image the size of the image named by `param["region_of"]`
-    (labels 1..N, at most MAX_REGION_OBJECTS), written to `job_dir`. `source` is that image's "or file" widget (or None),
-    `image` its layer (or None), `image_label` its label for the messages. Anything that makes this impossible is said to the person, never guessed around.
+    """The shapes of the selection as a label image the size of the image named by `param["region_of"]` (labels 1..N, at most
+    MAX_REGION_OBJECTS), written to `job_dir`. `selection` is the Shapes layer as it was at the click, copied by value (SPEC_WRONG_SCIENCE
+    section 4: editing the shapes during the export changes nothing), `file` the file chosen for that image (or None), `image` its
+    layer as it was at the click (or None), `image_label` its label for the messages. Anything that makes this impossible is said to
+    the person, never guessed around.
     """
+    from napari.layers import Shapes
     from tifffile import imwrite
 
     label = param["label"]
-    shape, scale = _region_image_shape(label, image_label or param["region_of"], source, image)
-    layer = _selected_shapes_layer(viewer, label)
-    count = len(layer.data)
+    shape, scale = _region_image_shape(label, image_label or param["region_of"], file, image)
+    if selection is None:
+        raise ValueError(
+            "'%s': select a Shapes layer in the layer list, or untick 'use the selection'" % label
+        )
+    if len(selection.vertices) == 0:
+        raise ValueError("'%s': the selected Shapes layer '%s' has no shapes" % (label, selection.name))
+    count = len(selection.vertices)
     if count > MAX_REGION_OBJECTS:
         raise ValueError(
             "'%s': %d objects are selected; at most %d are supported" % (label, count, MAX_REGION_OBJECTS)
         )
-    if not np.allclose(layer.scale[-2:], scale):
+    if not np.allclose(selection.scale[-2:], scale):
         raise ValueError(
             "'%s': the Shapes layer '%s' has the scale %s but the image has %s; give them the same scale"
-            % (label, layer.name, tuple(layer.scale[-2:]), scale)
+            % (label, selection.name, tuple(selection.scale[-2:]), tuple(scale))
         )
-    mask = np.asarray(layer.to_labels(labels_shape=tuple(shape)), dtype=np.uint16)
+    copy_ = Shapes(
+        [np.array(v) for v in selection.vertices],
+        shape_type=list(selection.shape_types),
+        scale=selection.scale,
+    )
+    mask = np.asarray(copy_.to_labels(labels_shape=tuple(shape)), dtype=np.uint16)
     if not mask.any():
-        raise ValueError("'%s': the shapes of '%s' lie outside the image" % (label, layer.name))
+        raise ValueError("'%s': the shapes of '%s' lie outside the image" % (label, selection.name))
     path = job_dir / (param["name"] + ".tif")
     imwrite(path, mask)
     return str(path)
