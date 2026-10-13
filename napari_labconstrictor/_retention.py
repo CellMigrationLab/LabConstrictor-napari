@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from labconstrictor_tools import log, registry
+from labconstrictor_tools import runs as tools_runs
 
 try:
     from labconstrictor_tools import retention as _tools_retention
@@ -42,15 +43,74 @@ PRUNE_TIMEOUT_S = (
     900  # a prune that takes longer than this is stopped (it is safe to stop: the next one finishes the job)
 )
 _NAME_LIMIT = 64
-_DONE_STATUS = {"COMPLETE": "ok", "CANCELED": "cancelled"}  # every other task status is "failed"
+TOOLS_MINIMUM = "0.2.0rc1"  # the version string of the first Tools that has the run-record helpers (and of rc.1, which lacks them)
+_RUN_HELPERS = (
+    "build_record",
+    "record_json",
+    "done_status",
+)  # additive functions of labconstrictor_tools.runs (docs/PROTOCOL.md)
 
 
-def done_status(task_status: str, cancel_requested: bool = False) -> str:
-    """The `.lc-done.json` status for a task status. A worker that had to be killed after the person pressed Cancel is a cancelled
-    run (the status line says "cancelled (worker stopped)"), not a crash."""
-    if task_status == "CRASHED" and cancel_requested:
-        return "cancelled"
-    return _DONE_STATUS.get(task_status, "failed")
+def tools_problem(runs_module: Any = tools_runs) -> str | None:
+    """None when the installed labconstrictor-tools has the run-record helpers this plugin calls, else one sentence for the person.
+
+    A version number cannot tell: v0.2.0-rc.1 and v0.2.0-rc.2 both report `0.2.0rc1`, and Tools lists no `features` id for these
+    helpers (docs/PROTOCOL.md, "There is no `features` id for them"). So the helpers themselves are looked for.
+    """
+    missing = [name for name in _RUN_HELPERS if not callable(getattr(runs_module, name, None))]
+    if not missing:
+        return None
+    try:
+        from labconstrictor_tools._version import __version__ as installed
+    except ImportError:
+        installed = "of unknown version"
+    return (
+        "napari-labconstrictor needs a labconstrictor-tools that has runs.%s (the installed one, %s, does not): update it, "
+        "to the tag v0.2.0-rc.2 or newer (v0.2.0-rc.1 reports the same version %s but lacks them), e.g. "
+        "pip install -U git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
+        % (", runs.".join(missing), installed, TOOLS_MINIMUM)
+    )
+
+
+def require_run_helpers(runs_module: Any = tools_runs) -> None:
+    """Refuse to load with a Tools that cannot write the run record: raises ImportError with the sentence of `tools_problem`."""
+    problem = tools_problem(runs_module)
+    if problem is not None:
+        raise ImportError(problem)
+
+
+require_run_helpers()
+
+
+def run_record(
+    app: str,
+    tool_id: str,
+    request: dict[str, Any],
+    task: Any,
+    seconds: float,
+    stderr: str,
+    snapshot: Any,
+    keep_inputs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """The content of `run.json` of one finished task: the one Tools writes for its own runs (`runs.build_record`), with the run
+    identity and start time of the snapshot. `keep_inputs` are reserved request inputs (`_calibration`) that must be under `inputs`
+    whatever Tools copies (SPEC_WRONG_SCIENCE 2.3.4: the host writes it too; a Tools with `calibration_per_axis` copies it as well).
+    """
+    content = tools_runs.build_record(
+        app,
+        tool_id,
+        request,
+        task,
+        seconds,
+        stderr,
+        run_id=snapshot.run_id if snapshot else None,
+        started_utc=snapshot.started if snapshot else None,
+    )
+    inputs = content.setdefault("inputs", {})
+    for key in keep_inputs:
+        if key in request and key not in inputs:
+            inputs[key] = request[key]
+    return content
 
 
 def slug(text: str) -> str:

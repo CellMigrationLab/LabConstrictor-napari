@@ -20,7 +20,7 @@ Run these commands in the same environment you start napari from. If you start n
     pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/heads/main.zip
     pip install https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/heads/main.zip
 
-These are source archives, so you do not need `git`. Restart napari.
+These are source archives, so you do not need `git`. The plugin needs LabConstrictor-Tools v0.2.0-rc.2 or newer (the archive above is); with the older v0.2.0-rc.1 it refuses to load and says so. Restart napari.
 
 ## Open it
 
