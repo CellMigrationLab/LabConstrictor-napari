@@ -66,29 +66,39 @@ expect("message_hidden_before_a_run", w.message_label.isHidden())
 box.value = "square"
 run()
 names = [layer.name for layer in v.layers]
-expect("image_and_points_layers", names == ["interactions:picture", "interactions:corners"], names)
-pts = v.layers["interactions:corners"]
+# the tool has no image input: its points are NOT drawn at the pixel origin but shown as a table (SPEC_WRONG_SCIENCE 1.1.5, 1.1.6)
+expect("image_layer_and_no_points_layer", names == ["interactions:picture"], names)
+table = w._docks[("interactions", "corners")]
+cells = [[table.item(r, c).text() for c in range(table.columnCount())] for r in range(table.rowCount())]
 expect(
-    "points_have_two_rows_and_properties",
-    pts.data.shape == (2, 2) and list(pts.properties["corner"]) == ["top-left", "bottom-right"],
-    (pts.data, pts.properties),
+    "points_are_a_table_with_two_rows_and_properties",
+    len(cells) == 2
+    and [row[-1] for row in cells] == ["top-left", "bottom-right"]
+    and table.horizontalHeaderItem(2).text() == "corner",
+    cells,
 )
 expect(
     "message_is_shown",
     not w.message_label.isHidden() and "square" in w.message_label.text(),
     w.message_label.text(),
 )
-expect("status_mentions_the_points", "points 'corners' (2)" in w.status.text(), w.status.text())
+expect(
+    "status_mentions_the_table",
+    "table 'corners' (2 rows)" in w.status.text() and "not drawn" in w.status.text(),
+    w.status.text(),
+)
 v.screenshot(str(EVIDENCE / "widget_messages_points_1.png"), canvas_only=False)
 box.value = "bar"
 run()
 names = [layer.name for layer in v.layers]
 expect(
-    "second_run_replaces_picture_and_points",
-    names == ["interactions:picture", "interactions:corners"] and "bar" in w.message_label.text(),
-    (names, w.message_label.text()),
+    "second_run_replaces_picture_and_points_table",
+    names == ["interactions:picture"]
+    and "bar" in w.message_label.text()
+    and [k for k in w._docks if k[1] == "corners"] == [("interactions", "corners")],
+    (names, w.message_label.text(), list(w._docks)),
 )
-expect("points_follow_the_new_shape", v.layers["interactions:corners"].data.shape == (2, 2))
+expect("points_follow_the_new_shape", w._docks[("interactions", "corners")].rowCount() == 2)
 v.screenshot(str(EVIDENCE / "widget_messages_points_2.png"), canvas_only=False)
 w.unset_toggles["shape"].value = True
 w.gui.shape.value = "triangle"

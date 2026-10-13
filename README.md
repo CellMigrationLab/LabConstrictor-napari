@@ -35,7 +35,7 @@ Playground is a test application, not a validated scientific analysis. Once an a
 
 ### Selections, channels and calibration
 
-- **Use a selection:** a tool with a `RegionOf(...)` input gets a **"use the selection" checkbox** (off by default). When ticked, the shapes of the selected Shapes layer are sent as the region (several shapes become labels 1, 2, 3 ...). This is tool-specific; it does not crop every analysis automatically. It needs an open image layer: with an image given as a file the run is refused (see [docs/HOST_FEATURES.md](docs/HOST_FEATURES.md)).
+- **Use a selection:** a tool with a `RegionOf(...)` input gets a **"use the selection" checkbox** (off by default). When ticked, the shapes of the selected Shapes layer are sent as the region (several shapes become labels 1, 2, 3 ...). The shapes are converted into the pixel grid of the image that is sent, through napari's world coordinates and the full transform (scale, translate, rotate, shear, affine) of **both** layers, so the mask covers the pixels you see under the outline even when the Shapes layer and the image have different origins, scales or rotations; the mask has exactly the size of the sent image. This is tool-specific; it does not crop every analysis automatically. It needs an open 2D image layer: with an image given as a file the run is refused, and so is an image whose transform cannot be inverted (see [docs/HOST_FEATURES.md](docs/HOST_FEATURES.md)).
 - **Pick a channel:** a tool with `PickChannel()` gets a channel chooser for the colours of an RGB layer or the channels of a TIFF given as a file. The chooser is hidden when there is only one channel.
 - **Pixel size:** a pixel-size field linked to an image follows the layer's scale (units converted to micrometres) or the TIFF header. Both axes are read: if the Y and X pixel sizes differ, the status line warns and the tool, which takes one value, receives the X one. A layer whose unit is napari's default `pixel` (or another unit that is not a length) is taken to be in micrometres, and the status line says so. Check the calibration before relying on measurements.
 
@@ -43,12 +43,22 @@ Playground is a test application, not a validated scientific analysis. Once an a
 
 | Tool result | In napari |
 |---|---|
-| Image or labels | Image or Labels layer |
-| Points or outlines | Points or Shapes layer |
+| Image or labels | Image or Labels layer (with the source image's transform when the tool says which image it belongs to) |
+| Points or outlines | Points or Shapes layer placed on their image (a table or a file when there is no image input) |
 | Table | Table dock |
 | Alignment (affine) | Layer placed with the affine transform |
 | Message | Text shown below the status line |
 | Values or file | Summary in the status line |
+
+**Where results are placed.** A tool works on the pixels of the image that was sent and never sees napari's world coordinates; the plugin puts the result back (docs/SPEC_WRONG_SCIENCE.md of LabConstrictor-Tools, section 1):
+
+- Points, outlines, image and labels results that belong to an image (the image named by `ApplyTo`, or for points and outlines the first image input) get that layer's **complete transform**: scale, translate, rotate, shear, affine and units. Pixel centres sit at integer data coordinates, so a point at pixel `(y, x)` is drawn on the centre of that pixel (`result.data_to_world(p) == source.data_to_world(p)`). The transform is read from the layer when the results arrive, so a result follows a layer that was moved while the tool ran. A 2D result of a stack is placed only when the stack's other axes do not move the plane (identity scale and translate, no coupling); otherwise the result is not drawn, the status says why and the files are kept.
+- A transform that cannot be inverted is refused (nothing is drawn, the files are kept); nothing is ever approximated or resampled.
+- **No image input, no frame:** points and outlines of a tool that has no image input are **not** drawn at the pixel origin. Points are shown as a table and outlines are listed as a file; the files are kept under `<LC_HOME>/results/...` and the status names their path.
+- **An image given as a file** is its own pixel frame: the results are drawn in the pixels of the file (identity transform, no units), never on a layer that happens to be open or was shown last.
+- An image or labels result with no `ApplyTo` keeps the pixel origin (identity, no units). One with `ApplyTo` whose size differs from the sent image is shown at the pixel origin and the status says `'name' is W x H but 'source' was exported as W2 x H2; shown at the pixel origin, not aligned`.
+- A repeated run that replaces a layer sets its transform again from the new result.
+- Not covered yet: stacks and time axes (selections on a stack, `t`/`z` columns of points) and results at a reduced resolution; the Affine overlay still uses only the target's scale.
 
 A tool can ask for repeated runs to replace earlier results rather than create more layers. Very large results are not shown in full: a result image over 4 GiB is not loaded, a table dock shows at most 100 000 rows and at most 50 000 outlines are drawn (the rest is reported; the tool's own files hold everything).
 
@@ -129,14 +139,16 @@ xvfb-run -a python test_region.py
 xvfb-run -a python test_messages_points.py
 xvfb-run -a python test_retention_markers.py     # run records, markers, the prune subprocess (a recorder), nothing deleted by the plugin
 xvfb-run -a python test_retention_prune_real.py  # the real `labconstrictor-tools prune` against a private LC_HOME
-xvfb-run -a python test_run_identity.py          # RUN-01..06: the run is frozen at the click
+xvfb-run -a python test_run_identity.py          # RUN-01..06: the run is frozen at the click (RUN-05 for translate, rotate, shear, affine)
+xvfb-run -a python test_coordinate_frame.py      # CF-01..CF-14: placement and masks with real layers and real affines (conformance.json)
+xvfb-run -a python test_coordinate_frame_run.py  # the same through the widget and a real worker: the mask and image the worker received
 ```
 
 Every `tests/test_*.py` is a standalone script; CI runs them all in a loop (a new test is picked up without editing the workflow). `scripts/check_qt_backend.sh pyqt6|pyside6` repeats the Qt backend check in a brand-new virtualenv (Linux, needs `xvfb-run`). The tests use the synthetic example application of LabConstrictor-Tools in a private registry, so no real scientific application is needed.
 
 CI runs PySide6 and PyQt6 on Linux, Windows and macOS (`LC_EXPECT_QT` makes `test_qt_backend.py` fail if the wrong binding was loaded), plus lint (black, ruff) and a mypy type check.
 
-Under a PyQt binding each test script leaves through `os._exit` (`_leave` in `tests/_paths.py`): PyQt's own exit handler crashed the interpreter with a napari window open after the verdict was printed (measured on Linux with PyQt6 6.11 and napari 0.9.2: 37 of 60 runs of one script; PySide6 6.12: 0 of 60). This is a test-harness workaround only; the exit code still carries the verdict.
+Under a PyQt binding each test script leaves through `os._exit` (`_leave` in `tests/_paths.py`): PyQt's own exit handler crashed the interpreter with a napari window open after the verdict was printed (measured on Linux with PyQt6 6.11 and napari 0.9.2: 37 of 60 runs of one script; PySide6 6.12: 0 of 60). This is a test-harness workaround only; the exit code still carries the verdict. The same `os._exit` is used under PySide6 on Python below 3.12, for a different reason: PySide6 6.12.0 loses one reference to `None` on every void Qt call (`sys.getrefcount(None)` falls by one per `setText`, `setVisible`, `processEvents`, `QTableWidget.setItem`, ...), so a test with enough Qt calls aborts in interpreter finalisation (`none_dealloc`, exit 134) after printing its verdict; it showed up as three failing PySide6 scripts on Linux in the CI of the coordinate-frame PR. Python 3.12 made `None` immortal and is not affected. A table of about 100 000 cells filled cell by cell (`MAX_TABLE_ROWS`) can hit the same limit while it is being made on PySide6 + Python 3.11; that is not changed here.
 
 Related projects: [Tools](https://github.com/CellMigrationLab/LabConstrictor-Tools) · [Fiji](https://github.com/CellMigrationLab/LabConstrictor-Fiji) · [QuPath](https://github.com/CellMigrationLab/LabConstrictor-QuPath) · [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground).
 

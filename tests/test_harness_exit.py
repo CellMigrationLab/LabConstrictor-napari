@@ -10,6 +10,8 @@ from pathlib import Path
 import qtpy
 
 HERE = Path(__file__).resolve().parent
+# the same rule as `_paths`: PyQt always, PySide6 only on Python < 3.12 (PySide6 6.12.0 loses a reference to None per void Qt call there)
+LEAVES_AT_ONCE = qtpy.API_NAME.startswith("PyQt") or sys.version_info < (3, 12)
 
 
 def run(body):
@@ -44,17 +46,21 @@ class Leave(unittest.TestCase):
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("ValueError: boom", done.stderr)
 
-    @unittest.skipUnless(qtpy.API_NAME.startswith("PyQt"), "PySide6 keeps the normal exit")
+    @unittest.skipUnless(LEAVES_AT_ONCE, "PySide6 on Python 3.12+ keeps the normal exit")
     def test_the_exit_is_immediate_not_through_the_exit_handlers(self):
         done = run("import atexit\natexit.register(lambda: print('handler ran'))\nsys.exit(0)")
         self.assertEqual(done.returncode, 0)
         self.assertNotIn("handler ran", done.stdout)
 
-    @unittest.skipIf(qtpy.API_NAME.startswith("PyQt"), "a PyQt binding uses _leave")
-    def test_a_non_pyqt_binding_exits_normally_through_the_exit_handlers(self):
+    @unittest.skipIf(LEAVES_AT_ONCE, "a PyQt binding, or PySide6 on Python < 3.12, uses _leave")
+    def test_a_binding_without_the_problem_exits_normally_through_the_exit_handlers(self):
         done = run("import atexit\natexit.register(lambda: print('handler ran'))\nsys.exit(0)")
         self.assertEqual(done.returncode, 0)
         self.assertIn("handler ran", done.stdout)
+
+    def test_the_rule_matches_the_harness(self):
+        done = run("print('leaves', sys.exit.__name__ == '_leave')")
+        self.assertIn("leaves %s" % LEAVES_AT_ONCE, done.stdout)
 
 
 if __name__ == "__main__":

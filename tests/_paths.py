@@ -32,12 +32,18 @@ def _leave(code=None):
 
     Why: running the exit handlers crashes with the PyQt bindings. PyQt6 6.11 (the latest) segfaults at exit with a napari window open:
     37 of 60 runs of test_parity_region.py on Linux (napari 0.9.2, offscreen under Xvfb), a segfault after the verdict with no Python frame.
-    PySide6 6.12 did not: 0 of 60 runs of the same script, so PySide6 runs keep the normal exit and the exit handlers are tested too.
+    PySide6 6.12 did not crash that way: 0 of 60 runs of the same script (its own, different exit problem is described below).
+    PySide6 on Python 3.11 needs it as well, for another reason (found by the coordinate-frame tests on Linux, CI run of PR #52):
+    PySide6 6.12.0 loses one reference to `None` on EVERY void Qt call (measured: `sys.getrefcount(None)` falls by 1 per `setText`,
+    `setVisible`, `update`, `processEvents`, `QTableWidget.setItem` ..., and not for calls that return a value). That is harmless until
+    the interpreter tears down: a test that makes enough Qt calls (hundreds of layers, long `pump` loops) then dies in finalisation with
+    `Fatal Python error: none_dealloc: deallocating None` AFTER it printed "FAILURES: none" (abort, exit 134). Python 3.12 made `None`
+    immortal, so only `sys.version_info < (3, 12)` is affected. The checks themselves have already run when it happens.
     A worker needs no handler: it exits when its input closes with this process.
 
-    Narrow by design: only `sys.exit`, and only under a PyQt binding. A failed script still exits non-zero (its `sys.exit(1)`), and an
-    uncaught exception is not touched (traceback, exit 1). Retire this once the PyQt6 crash is fixed
-    upstream; check by looping a script ~60 times without it (see the README, Development and tests).
+    Narrow by design: only `sys.exit`, and only under a PyQt binding or on Python < 3.12. A failed script still exits non-zero (its
+    `sys.exit(1)`), and an uncaught exception is not touched (traceback, exit 1). Retire this once the PyQt6 crash and the PySide6
+    refcount bug are fixed upstream; check by looping a script ~60 times without it (see the README, Development and tests).
     """
     if code is None:
         code = 0
@@ -50,5 +56,9 @@ def _leave(code=None):
 
 
 faulthandler.enable()  # a crash prints the Python stack of every thread
-if qtpy.API_NAME.startswith("PyQt"):  # PySide6 exits normally (see _leave)
+_LEAVE_AT_ONCE = qtpy.API_NAME.startswith("PyQt") or sys.version_info < (
+    3,
+    12,
+)  # PySide6 on Python 3.12+ exits normally
+if _LEAVE_AT_ONCE:
     sys.exit = _leave

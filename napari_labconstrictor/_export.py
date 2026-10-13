@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from ._frame import Frame, selection_vertices
+
 if TYPE_CHECKING:  # napari and magicgui ship no usable stubs here: their objects are annotated by name only
     from napari.layers import Image, Labels
 
@@ -21,19 +23,17 @@ def is_set(path: Any) -> bool:
     return path is not None and str(path) not in ("", ".")
 
 
-def _region_image_shape(
-    label: str, image_label: str, file: Path | None, image: SourceRef | None
-) -> tuple[tuple[int, ...], tuple[float, ...]]:
-    """(yx shape, yx scale) of the open layer a region belongs to, as the run snapshot recorded them at the click. The selection is
-    drawn on a layer, so an image given as a file is refused: nothing says where the selection lies on an unknown file.
+def _region_frame(label: str, image_label: str, file: Path | None, image: SourceRef | None) -> Frame:
+    """The frame of the open layer a region belongs to, as the run snapshot recorded it at the click. The selection is drawn on a layer,
+    so an image given as a file is refused: nothing says where the selection lies on an unknown file.
     """
     if file is not None:
         raise ValueError(
             "'%s': the selection belongs to an open image, but a file was chosen for '%s': open the image, or untick the selection"
             % (label, image_label)
         )
-    if image is not None:
-        return image.shape[-2:], image.scale[-2:]
+    if image is not None and image.frame is not None:
+        return image.frame
     raise ValueError("'%s': choose the image it belongs to first" % label)
 
 
@@ -45,17 +45,19 @@ def selection_mask(
     job_dir: Path,
     image_label: str | None = None,
 ) -> str:
-    """The shapes of the selection as a label image the size of the image named by `param["region_of"]` (labels 1..N, at most
-    MAX_REGION_OBJECTS), written to `job_dir`. `selection` is the Shapes layer as it was at the click, copied by value (SPEC_WRONG_SCIENCE
-    section 4: editing the shapes during the export changes nothing), `file` the file chosen for that image (or None), `image` its
-    layer as it was at the click (or None), `image_label` its label for the messages. Anything that makes this impossible is said to
-    the person, never guessed around.
+    """The shapes of the selection as a label image the size of the exported image named by `param["region_of"]` (labels 1..N, at most
+    MAX_REGION_OBJECTS), written to `job_dir`. `selection` is the Shapes layer as it was at the click, copied by value with its full
+    transform (SPEC_WRONG_SCIENCE section 4: editing or moving the shapes during the export changes nothing), `file` the file chosen
+    for that image (or None), `image` its layer as it was at the click, with its frame (or None), `image_label` its label for the
+    messages. The shapes go through the world (`shapes.data_to_world`, then `image.world_to_data`, SPEC 1.2.3) into the pixel grid of
+    the exported image and are rasterised there, never in their own raw coordinates (1.2.4). Anything that makes this impossible is
+    said to the person, never guessed around.
     """
     from napari.layers import Shapes
     from tifffile import imwrite
 
     label = param["label"]
-    shape, scale = _region_image_shape(label, image_label or param["region_of"], file, image)
+    frame = _region_frame(label, image_label or param["region_of"], file, image)
     if selection is None:
         raise ValueError(
             "'%s': select a Shapes layer in the layer list, or untick 'use the selection'" % label
@@ -67,17 +69,17 @@ def selection_mask(
         raise ValueError(
             "'%s': %d objects are selected; at most %d are supported" % (label, count, MAX_REGION_OBJECTS)
         )
-    if not np.allclose(selection.scale[-2:], scale):
+    transform = frame.transform
+    if transform is None or transform.shape != (3, 3):
+        # SPEC GAP (Wave 2): which plane of a stack the selection lies on needs the t/z axes of the frame; Wave 1 is the 2D plane
         raise ValueError(
-            "'%s': the Shapes layer '%s' has the scale %s but the image has %s; give them the same scale"
-            % (label, selection.name, tuple(selection.scale[-2:]), tuple(scale))
+            "'%s': the image '%s' is not a 2D image; a selection on a stack is not supported yet"
+            % (label, frame.label)
         )
-    copy_ = Shapes(
-        [np.array(v) for v in selection.vertices],
-        shape_type=list(selection.shape_types),
-        scale=selection.scale,
+    vertices, kinds = selection_vertices(
+        selection.matrix, selection.vertices, selection.shape_types, transform, frame.label
     )
-    mask = np.asarray(copy_.to_labels(labels_shape=tuple(shape)), dtype=np.uint16)
+    mask = np.asarray(Shapes(vertices, shape_type=kinds).to_labels(labels_shape=frame.shape), dtype=np.uint16)
     if not mask.any():
         raise ValueError("'%s': the shapes of '%s' lie outside the image" % (label, selection.name))
     path = job_dir / (param["name"] + ".tif")

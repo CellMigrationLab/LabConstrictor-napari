@@ -37,7 +37,9 @@ When the tool declares a pixel-size parameter linked to an image, the widget fil
 
 ## Selections
 
-A `RegionOf(...)` input has a **"use the selection" checkbox** (off by default). When ticked, the shapes of the selected Shapes layer are sent as the region mask (several shapes become labels 1, 2, 3 ...). The tool must explicitly declare that input; a selected shape does not automatically crop other image inputs. The selection belongs to an open image layer: with an image given as a file the run is refused.
+A `RegionOf(...)` input has a **"use the selection" checkbox** (off by default). When ticked, the shapes of the selected Shapes layer are sent as the region mask (several shapes become labels 1, 2, 3 ...). The tool must explicitly declare that input; a selected shape does not automatically crop other image inputs. The selection belongs to an open 2D image layer: with an image given as a file the run is refused.
+
+The shapes are not painted in their own raw coordinates. Each vertex goes through the Shapes layer's transform to napari's world coordinates and back through the image layer's transform into the pixel grid of the image that is sent (scale, translate, rotate, shear and affine of both layers; level 0 of a multi-scale image). The mask therefore has exactly the size of the sent image and covers the pixels under the outline you see, also when the two layers have the same scale but different origins, or one is rotated. A pixel is in the mask when its centre lies inside the shape. Rectangles and ellipses are converted as shapes (an ellipse stays an ellipse under rotation and shear). A selection is refused, with a sentence and nothing started, when the image's transform cannot be inverted, when it lies completely outside the image, or when the image is a stack (selections on stacks are not supported yet). If you move or edit the Shapes layer or the image after pressing Run, the mask is still the one of the click.
 
 ## Running, progress and cancelling
 
@@ -49,14 +51,24 @@ Tools can report progress and respond to **Cancel**; a tool that ignores Cancel 
 
 | Return type | napari |
 |---|---|
-| Image / labels | Image or Labels layer |
-| Points / outlines | Points or Shapes layer |
+| Image / labels | Image or Labels layer, with the source image's transform when the tool says which image it belongs to |
+| Points / outlines | Points or Shapes layer on their image; a table or a file when the tool has no image input |
 | Table | Table dock |
 | Affine | Layer placed with the affine transform |
 | Message | Text below the status line |
 | Values / file | Summary in the status line |
 
 Some outputs carry replacement metadata so repeated runs update an existing layer or table. Check which layer is selected before starting another run.
+
+### Where a result is drawn
+
+A tool reports coordinates in the pixels of the image that was sent (the centre of a pixel is an integer). The plugin draws the result on the layer the tool says it belongs to (`ApplyTo`; for points and outlines without one, the first image input) with that layer's **whole** transform: scale, translate, rotate, shear and affine, and its units. A point at pixel `(y, x)` is on the centre of that pixel, so it overlays the image for a translated, rotated or sheared layer and not only for a scaled one. The transform is read when the results arrive: a result follows its layer if you moved the layer while the tool ran. A layer with a transform that cannot be inverted is refused: nothing is drawn, the files are kept and the status says why.
+
+- **No image input:** points and outlines of a tool that has no image input are not drawn at the pixel origin. Points appear as a table dock and outlines are listed as a file; the files are copied to `<LC_HOME>/results/...` and the status shows the path.
+- **Image given as a file:** its pixels are the frame; the result is drawn with an identity transform and no units. No open layer is used, however recently it was shown.
+- **Image or labels with no `ApplyTo`:** pixel origin, identity transform, no units. With `ApplyTo` but another size than the sent image: pixel origin again, and the status says `'name' is W x H but 'source' was exported as W2 x H2; shown at the pixel origin, not aligned`.
+- **Repeated runs (`Replace`)** set the transform again from the new result; they never keep the previous one.
+- **Stacks:** only 2D images are covered. A 2D result of a stack is placed when the stack's other axes have identity scale and translate and do not couple to Y/X; otherwise it is not drawn. Time and z columns, selections on stacks and results at reduced resolution are later work.
 
 A tool that fails with the code `no_match` or `no_result` is shown as a notice, not as an error. Very large results are limited in the viewer: a result image over 4 GiB is not loaded, a table dock shows at most 100 000 rows, and at most 50 000 outlines are drawn.
 
@@ -76,4 +88,4 @@ Every layer a run draws carries `layer.metadata["labconstrictor"]` with the run'
 
 If the application or tool is missing, run `labconstrictor-tools list` and `labconstrictor-tools doctor`. Check the widget's **Details...** and the shared log (`~/.labconstrictor/logs/labconstrictor.log`) for worker failures; `labconstrictor-tools support-bundle` collects them for a bug report.
 
-The widget and conversion tests live under `tests/` and run in CI with PySide6 and PyQt6 on Linux, Windows and macOS. Maintainers should test image/file precedence, channel selection, Shapes masks, pixel size, each output type, cancellation and repeated runs when those code paths change.
+The widget and conversion tests live under `tests/` and run in CI with PySide6 and PyQt6 on Linux, Windows and macOS. Maintainers should test image/file precedence, channel selection, Shapes masks and result placement (`test_coordinate_frame.py` runs every coordinate case of the shared conformance data with real affines), pixel size, each output type, cancellation and repeated runs when those code paths change.

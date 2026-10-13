@@ -133,11 +133,20 @@ scaled = v.add_shapes(
     [np.array([[0, 0], [0, 25], [25, 25], [25, 0]])], shape_type="polygon", name="scaled", scale=(2, 2)
 )
 v.layers.selection = {scaled}
-try:
-    w._export_inputs({"image": v.layers["field"], "region": None}, Path(tempfile.mkdtemp()))
-    expect("scale_mismatch_is_refused", False, "no error")
-except ValueError as error:
-    expect("scale_mismatch_is_refused", "scale" in str(error), str(error))
+# SPEC_WRONG_SCIENCE 1.2 / 1.4 (issue #31): a Shapes layer with another transform is CONVERTED through the world, never refused and never
+# rasterised in its own raw coordinates. The same vertices at scale 2 cover world 0..50, i.e. image pixels 0..49 (not 0..24)
+inputs = w._export_inputs({"image": v.layers["field"], "region": None}, Path(tempfile.mkdtemp()))
+mask = tifffile.imread(inputs["region"])
+expect(
+    "a_shapes_layer_with_another_scale_is_converted_not_refused",
+    mask.shape == (60, 80)
+    and mask[40, 40] == 1
+    and mask[10, 10] == 1
+    and mask[55, 10] == 0
+    and mask[10, 55] == 0
+    and (mask > 0).sum() > 2000,
+    (mask.shape, int((mask > 0).sum())),
+)
 
 # copy as command says that a selection cannot be copied
 v.layers.selection = {shapes}

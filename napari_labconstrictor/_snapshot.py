@@ -26,6 +26,8 @@ from typing import Any
 
 import numpy as np
 
+from ._frame import Frame, frame_of_file, frame_of_layer, world_matrix
+
 TARGET_UNAVAILABLE = "target_unavailable"  # the host-internal code of SPEC_WRONG_SCIENCE 1.4 / 4.4
 # the sentence of conformance.json `messages.target_unavailable` (tests compare it with the file)
 TARGET_UNAVAILABLE_TEXT = "run {run_id} on '{source}': '{source}' is no longer open; results are in {path}"
@@ -50,6 +52,9 @@ class SourceRef:
     name: str  # for sentences only
     shape: tuple[int, ...]  # data shape at the click (level 0)
     scale: tuple[float, ...]
+    frame: (
+        Frame | None
+    )  # the exported image's frame (SPEC_WRONG_SCIENCE 1.1.2): shape and the full transform at the click
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,9 @@ class SelectionRef:
     ]  # one read-only copy per shape (rows are the shape's vertices, last two columns y, x)
     shape_types: tuple[str, ...]
     scale: tuple[float, ...]
+    matrix: (
+        np.ndarray
+    )  # the layer's full data -> world matrix at the click (read-only): scale, translate, rotate, shear, affine
 
 
 @dataclass(frozen=True)
@@ -77,6 +85,9 @@ class RunSnapshot:
     unset: frozenset[str]  # optional parameters left unset (omitted from the request)
     channels: Mapping[str, int | None]  # image parameter -> the channel picked (or None)
     selection: SelectionRef | None
+    frames: Mapping[str, Frame] = field(
+        default_factory=dict
+    )  # image parameter -> the frame of its exported image (layer or file)
     started: str = field(default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"))
 
     @property
@@ -87,6 +98,10 @@ class RunSnapshot:
         """The value of parameter `name` as it was at the click: the layer object for an image or labels input."""
         source = self.sources.get(name)
         return source.layer if source is not None else self.values.get(name)
+
+    def frame(self, name: str) -> Frame | None:
+        """The frame recorded at the click for image or labels input `name` (a layer's, or a file's pixel frame), else None."""
+        return self.frames.get(name)
 
     def metadata(self) -> dict[str, dict[str, str]]:
         """What every layer drawn for this run carries in `layer.metadata`: app and tool come from the snapshot, never the widget."""
@@ -133,6 +148,7 @@ def selection_of(layer: Any | None) -> SelectionRef | None:
         tuple(_readonly(vertices) for vertices in layer.data),
         tuple(str(kind) for kind in layer.shape_type),
         tuple(float(s) for s in layer.scale),
+        _readonly(world_matrix(layer)),
     )
 
 
@@ -150,17 +166,26 @@ def take(
     """Freeze a run: what the form said, which layer objects it named, the selection geometry. Call it on the UI thread first."""
     files = dict(files or {})
     sources: dict[str, SourceRef] = {}
+    frames: dict[str, Frame] = {}
     values: dict[str, Any] = {}
     layer_params = {p["name"] for p in tool["inputs"] if p["type"] in ("image", "labels")}
+    for name in layer_params & files.keys():  # a file is its own pixel frame, whatever else is open (CF-07)
+        frames[name] = frame_of_file(name, files[name])
     for name, value in form_values.items():
         if name in layer_params and value is not None and name not in files:
             data = level0(value)
+            frame = (
+                frame_of_layer(name, value) if hasattr(value, "data_to_world") else None
+            )  # None: not a napari layer
+            if frame is not None:
+                frames[name] = frame
             sources[name] = SourceRef(
                 name,
                 value,
                 str(getattr(value, "name", name)),
                 tuple(data.shape),
                 tuple(float(s) for s in getattr(value, "scale", ())),
+                frame,
             )
         elif name in layer_params:
             values[name] = None if name in files else value  # a file wins over the layer chooser
@@ -177,4 +202,5 @@ def take(
         unset=frozenset(unset),
         channels=MappingProxyType(dict(channels or {})),
         selection=selection_of(selection_layer),
+        frames=MappingProxyType(frames),
     )

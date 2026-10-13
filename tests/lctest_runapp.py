@@ -21,6 +21,7 @@ from labconstrictor_tools import (
     PointsOut,
     RegionOf,
     Scalars,
+    ShapesOut,
     TableOut,
     check_cancel,
     tool,
@@ -106,3 +107,51 @@ def big_picture() -> Annotated[ImageOut, Name("picture")]:
 @tool("Echo")
 def echo(a: float = 1.0) -> Scalars:
     return {"a": a}
+
+
+@tool("Region values")
+def region_values(
+    image: Annotated[Image, Axes("YX")],
+    region: Annotated[Optional[Labels], Axes("YX"), RegionOf("image")] = None,  # noqa: UP045
+) -> Scalars:
+    """What the worker received: the shape of the image and, under the region, how many pixels, their sum and their sorted values."""
+    import numpy as np
+
+    pixels = np.asarray(image)
+    mask = np.asarray(region) if region is not None else np.zeros(pixels.shape, int)
+    return {
+        "image_shape": list(pixels.shape),
+        "mask_shape": list(mask.shape),
+        "mask_pixels": int((mask > 0).sum()),
+        "values": sorted(int(v) for v in pixels[mask > 0]) if mask.shape == pixels.shape else [],
+    }
+
+
+@tool("Outline and mark")
+def outline_and_mark(image: Annotated[Image, Axes("YX")]) -> tuple[
+    Annotated[PointsOut, Name("spots"), ApplyTo("image")],
+    Annotated[ShapesOut, Name("outline"), ApplyTo("image")],
+]:
+    """One point and one rectangle (pixel coordinates; centres of pixels are integers) on the image."""
+    return [{"y": 2.0, "x": 3.0}], [[[1.5, 2.5], [1.5, 5.5], [3.5, 5.5], [3.5, 2.5]]]
+
+
+@tool("Half size labels")
+def half_size_labels(
+    image: Annotated[Image, Axes("YX")],
+) -> Annotated[LabelsOut, Name("mask"), ApplyTo("image")]:
+    """A labels result with half the rows and columns of the input (the exported frame does not fit it)."""
+    import numpy as np
+
+    pixels = np.asarray(image)
+    return np.ones((pixels.shape[0] // 2, pixels.shape[1] // 2), np.int32)
+
+
+@tool("Marks without an image")
+def marks_without_an_image(gate: str = "") -> tuple[
+    Annotated[PointsOut, Name("spots")],
+    Annotated[ShapesOut, Name("outline")],
+]:
+    """A tool with no image input that still reports points and an outline."""
+    _wait_for(gate)
+    return [{"y": 2.0, "x": 3.0}, {"y": 4.0, "x": 5.0}], [[[1.5, 2.5], [1.5, 5.5], [3.5, 5.5], [3.5, 2.5]]]
