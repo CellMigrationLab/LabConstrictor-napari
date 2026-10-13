@@ -417,8 +417,16 @@ class LabConstrictorWidget(QWidget):
         self._choice_latest, self._choice_pending = {}, set()
         self._choice_dependents, self._choice_base_tip = {}, {}
         if self.gui is not None:
-            self.form_holder.removeWidget(self.gui.native)
-            self.gui.native.setParent(None)
+            native = self.gui.native
+            self.form_holder.removeWidget(native)
+            # Never leave the old form as a parentless widget that Python owns: it sits in reference cycles, and the cyclic garbage
+            # collector runs in whichever thread allocates next (the `prune` watcher, the worker readers). That thread would delete the
+            # Qt widgets while the GUI thread is handling events for them: "Internal C++ object already deleted" in napari's event
+            # filter, then a segmentation fault (macOS PySide6 CI, test_number_run.py; reproduced on Linux with gc.collect() in a thread).
+            # A hidden child of this widget is owned by Qt, so a collection frees only the Python wrappers; the GUI thread deletes it.
+            native.hide()
+            native.setParent(self)
+            native.deleteLater()
             self.gui = None
             self.file_sources = {}
             self.cal_links, self._cal_refresh, self._cal_commit = {}, {}, {}
