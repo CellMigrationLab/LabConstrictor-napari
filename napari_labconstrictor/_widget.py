@@ -37,11 +37,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from . import _calibration, _retention, _snapshot
+from . import _calibration, _lookups, _retention, _snapshot
 from ._calibration import UNSET, USER, Derived, LinkState
 from ._export import channel_file, export_layer, selection_mask
 from ._export import is_set as _is_set
 from ._frame import FrameError
+from ._lookups import Lookup, LookupQueue, Reply, next_form_gen, snapshot_deps
 from ._results import COULD_NOT_DISPLAY, FileInput, ResultPresenter
 from ._schema import Param, Tool, presentation_order, rule_satisfied, signature_from_schema
 from ._units import TIFF_READ_ERRORS, calibration_from_tiff, calibration_of_layer
@@ -95,7 +96,9 @@ def _unfinished_text(task: Any) -> str:
 class _Signals(QObject):
     progress = Signal(object, object)
     done = Signal(object)
-    choices = Signal(object, object)  # (request number, list of options or None)
+    choices = Signal(
+        object
+    )  # a _lookups.Reply (plain data, built on the lookup thread, applied on the main thread)
 
 
 # `cast(Tool, ...)` below: `tool` is None only before a tool is chosen, and these methods run only from a built form;
@@ -113,6 +116,7 @@ class LabConstrictorWidget(QWidget):
         self.viewer = napari_viewer
         self._init_state()
         self._workers = WorkerCache()
+        self._lookups = LookupQueue(self._run_lookup)
         self._signals = _Signals()
         self._signals.progress.connect(self._on_progress)
         self._signals.done.connect(self._on_done)
@@ -172,13 +176,29 @@ class LabConstrictorWidget(QWidget):
         self._run_app: Any = None
         self._run_tool: Any = None
         self.timings: dict[str, float] = {}
-        self._choice_problems: dict[tuple[int, str], str] = (
-            {}
-        )  # (request number, parameter) -> why no choices
         self._choice_boxes: dict[str, Any] = {}  # ChoicesFrom parameter -> its dropdown
-        self._choice_seq: dict[str, int] = (
+        self._choice_latest: dict[str, int] = (
             {}
-        )  # parameter -> number of the newest question; older answers are dropped
+        )  # parameter -> request_id of its newest question (advanced the moment a dependency changes); older answers are dropped
+        self._choice_pending: set[str] = (
+            set()
+        )  # parameters whose choices are not known yet (SPEC_WRONG_SCIENCE 5.3)
+        self._choice_dependents: dict[str, list[str]] = (
+            {}
+        )  # controlling parameter -> ChoicesFrom parameters that use it
+        self._choice_base_tip: dict[str, str] = (
+            {}
+        )  # parameter -> its tooltip before a lookup problem was added
+        self._form_gen = (
+            next_form_gen()
+        )  # process-wide, never reset: changes whenever a form is built or destroyed (5.1)
+        self._request_id = 0  # per widget, never reset
+        self._lookup_note = (
+            ""  # the status line text a lookup problem put there (so that the next one replaces it)
+        )
+        self._shut_down = False  # True while closeEvent runs: nothing is started or applied meanwhile
+        self._was_closed = False  # closeEvent ran: the next showEvent asks the dropped questions again
+        self._run_thread: threading.Thread | None = None
         self._docks: dict[tuple[str, str], Any] = (
             {}
         )  # (app, table name) -> dock widget, so that Replace can swap it
@@ -302,12 +322,24 @@ class LabConstrictorWidget(QWidget):
         self._reaper.start(REAP_INTERVAL_MS)
         # closing the Napari window deletes this widget without calling closeEvent: stop the workers then too (not only when the
         # whole Python process ends); bound to the cache object, which outlives the widget
-        self.destroyed.connect(self._workers.close_all)
+        self.destroyed.connect(
+            lambda *_, lookups=self._lookups, workers=self._workers: (
+                lookups.close(final=True),
+                workers.shutdown(final=True),
+            )
+        )
         self.app_box.changed.connect(self._on_app_changed)
         self.tool_box.changed.connect(self._on_tool_changed)
 
     def showEvent(self, event: Any) -> None:  # Qt API name
         super().showEvent(event)
+        if (
+            self._was_closed
+        ):  # closed earlier and shown again: the questions that closing dropped are asked again
+            self._was_closed = False
+            self._reaper.start(REAP_INTERVAL_MS)
+            self._mark_choices_pending()
+            self._schedule_choices(0)
         if not getattr(self, "_shown_once", False):
             self._shown_once = True
             self._on_tool_changed()  # rebuild once now that a viewer ancestor exists
@@ -352,6 +384,7 @@ class LabConstrictorWidget(QWidget):
             log.error("napari: cannot build the form for %s: %s", tool.get("id"), error)
             self.status.setText("⚠ this tool cannot be shown: %s" % error)
             return
+        self._form_gen = next_form_gen()  # a form was built (5.1)
         self.file_sources = self._add_file_sources(tool)
         self.channel_boxes = self._add_channel_choosers(tool)
         self.unset_toggles = self._add_unset_toggles(tool)
@@ -367,6 +400,10 @@ class LabConstrictorWidget(QWidget):
         self.timings["gui_construction_ms"] = (time.perf_counter() - started) * 1000
 
     def _remove_form(self) -> None:
+        self._form_gen = next_form_gen()  # a form was destroyed (5.1): every answer on its way is void
+        self._lookups.drop_all()  # pending lookups forgotten, the one in flight cancelled
+        self._choice_latest, self._choice_pending = {}, set()
+        self._choice_dependents, self._choice_base_tip = {}, {}
         if self.gui is not None:
             self.form_holder.removeWidget(self.gui.native)
             self.gui.native.setParent(None)
@@ -378,7 +415,6 @@ class LabConstrictorWidget(QWidget):
             self.channel_boxes = {}
             self.advanced_toggle, self._members = None, {}
             self._choice_boxes, self._group_members = {}, {}
-            self._choice_seq = {}  # an answer still on its way belongs to the form that is gone
 
     def _make_form(self, tool: Tool) -> Any:
         from napari.layers import Image, Labels
@@ -639,6 +675,7 @@ class LabConstrictorWidget(QWidget):
         dropdown, when the source tool could answer, hides it and writes into it. When it cannot answer, the text field shows.
         """
         self._choice_boxes = {}
+        self._choice_dependents = {}
         for p in tool["inputs"]:
             src = p.get("choices_from")
             if not src:
@@ -650,7 +687,10 @@ class LabConstrictorWidget(QWidget):
             box.changed.connect(lambda value, f=field, n=p["name"]: self._choice_picked(n, f, value))
             self._choice_boxes[p["name"]] = box
             for name in src["depends"]:
-                self.gui[name].changed.connect(lambda *_: self._schedule_choices(CHOICES_DEBOUNCE_MS))
+                self._choice_dependents.setdefault(name, []).append(p["name"])
+        for name in self._choice_dependents:
+            self.gui[name].changed.connect(lambda *_, n=name: self._dependency_changed(n))
+        self._mark_choices_pending()
 
     def _choice_picked(self, name: str, field: Any, value: str | None) -> None:
         """Picking an option is the value (the text field behind it) and, for an optional parameter, also 'set'; the blank entry unsets it."""
@@ -659,8 +699,36 @@ class LabConstrictorWidget(QWidget):
         if toggle is not None:
             toggle.value = bool(value)
 
+    def _next_request_id(self) -> int:
+        self._request_id += 1
+        return self._request_id
+
+    def _mark_choices_pending(self) -> None:
+        """Every ChoicesFrom parameter of the form waits for its first answer (no choices shown until it arrives)."""
+        for name in self._choice_boxes:
+            self._invalidate_choice(name)
+
+    def _dependency_changed(self, dependency: str) -> None:
+        """A controlling value changed: the answers to the old value are void NOW; the debounce only delays the new question (5.3)."""
+        for name in self._choice_dependents.get(dependency, []):
+            self._invalidate_choice(name)
+        self._schedule_choices(CHOICES_DEBOUNCE_MS)
+
+    def _invalidate_choice(self, name: str) -> None:
+        self._choice_latest[name] = self._next_request_id()
+        self._choice_pending.add(name)
+        self._lookups.drop(name)
+        box = self._choice_boxes.get(name)
+        if box is not None and self.gui is not None:
+            box.visible = False  # never the choices of the old value
+            self.gui[name].visible = True
+
+    def choices_settled(self) -> bool:
+        """True when no ChoicesFrom question is waiting, asked or still to be asked (what a test, or a script, can wait for)."""
+        return not self._choice_pending and not self._lookups.busy and not self._choice_timer.isActive()
+
     def _schedule_choices(self, delay_ms: int) -> None:
-        if self._choice_boxes:
+        if self._choice_boxes and not self._shut_down:
             self._choice_timer.start(delay_ms)
 
     def _choice_inputs(self, source: str, depends: list[str], tool: Tool) -> dict[str, Any] | None:
@@ -678,7 +746,7 @@ class LabConstrictorWidget(QWidget):
 
     def _resolve_choices(self) -> None:
         tool = self.tool
-        if not tool or self.gui is None or not self._choice_boxes:
+        if not tool or self.gui is None or not self._choice_boxes or self._shut_down:
             return
         if self.task is not None and not self.task.done.is_set():
             self._schedule_choices(CHOICES_RETRY_MS)  # the worker is busy with a run; ask again afterwards
@@ -689,65 +757,64 @@ class LabConstrictorWidget(QWidget):
             if not src or p["name"] not in self._choice_boxes:
                 continue
             inputs = self._choice_inputs(src["tool"], src["depends"], tool)
-            number = self._choice_seq[p["name"]] = self._choice_seq.get(p["name"], 0) + 1
-            if inputs is None:
-                self._signals.choices.emit((number, p["name"]), None)
-                continue
-            threading.Thread(
-                target=self._ask_choices, args=(app, src, inputs, number, p["name"]), daemon=True
-            ).start()
+            request_id = self._choice_latest[p["name"]] = self._next_request_id()
+            self._lookups.drop(p["name"])
+            job = Lookup(
+                form_gen=self._form_gen,
+                app=app,
+                tool=tool["id"],
+                param=p["name"],
+                deps=snapshot_deps(inputs),
+                request_id=request_id,
+                source=src["tool"],
+                output=src["field"],
+                inputs=inputs or {},
+            )
+            if inputs is None:  # a needed value is missing: no question, no list
+                self._on_choices(Reply(job, None))
+            else:
+                self._choice_pending.add(p["name"])
+                for dropped in self._lookups.submit(
+                    job
+                ):  # more than 8 waiting: the oldest is told, not left hanging
+                    self._on_choices(
+                        Reply(dropped, None, "too many choice lookups were waiting for %s" % dropped.param)
+                    )
 
-    def _ask_choices(
-        self, app: str, src: dict[str, Any], inputs: dict[str, Any], number: int, name: str
-    ) -> None:
-        options = None
-        worker = None
-        job_dir = tempfile.mkdtemp(prefix="lcchoices_")
-        try:
-            worker = self._workers.acquire(app, reuse=True)
-            task = worker.task(src["tool"], {**inputs, JOB_DIR_KEY: job_dir})
-            task.wait()
-            if task.status == "COMPLETE":
-                for result in task.outputs["results"]:
-                    values = result.get("values", {}) if isinstance(result, dict) else {}
-                    if isinstance(values.get(src["field"]), list):
-                        options = [str(v) for v in values[src["field"]]]
-                        break
-            if options is None:  # intended fallback (the text field stays), but never a silent one
-                log.warning(
-                    "napari: %s gave no list for %r (status %s); using a text field",
-                    src.get("tool"),
-                    src["field"],
-                    task.status,
-                )
-                self._choice_problems[(number, name)] = "%s gave no choices for %s" % (src.get("tool"), name)
-        # BLE001: isolation boundary - any worker failure must leave the text field usable
-        except Exception:  # noqa: BLE001
-            log.error("napari: could not ask %s for choices", src.get("tool"), exc_info=True)
-            self._choice_problems[(number, name)] = "could not get the choices for %s (see the log)" % name
-        finally:
-            if worker is not None:
-                self._workers.release(app, worker, keep=worker.alive)
-            _retention.discard_job_dir(job_dir)
-        self._signals.choices.emit((number, name), options)
+    def _run_lookup(self, job: Lookup) -> None:
+        """On the lookup thread: ask, then hand the plain-data reply to the main thread (never touch a widget from here)."""
+        reply = _lookups.execute(job, self._workers)
+        if not self._shut_down:
+            self._signals.choices.emit(reply)
 
-    def _on_choices(self, key: tuple[int, str], options: list[str] | None) -> None:
-        number, name = key
-        box = self._choice_boxes.get(name) if self.gui is not None else None
-        if box is None or number != self._choice_seq.get(name):
-            return  # a late answer for another question or another form
+    def _reply_applies(self, job: Lookup) -> bool:
+        """5.2: the form, app, tool, newest request for the parameter, and the dependencies NOW (recomputed) are all still the same."""
+        tool = self.tool
+        if self._shut_down or self.gui is None or tool is None or job.param not in self._choice_boxes:
+            return False
+        if job.form_gen != self._form_gen or job.app != self.app_box.value or job.tool != tool["id"]:
+            return False
+        if job.request_id != self._choice_latest.get(job.param):
+            return False
+        src = next((p.get("choices_from") for p in tool["inputs"] if p["name"] == job.param), None)
+        if not src:
+            return False
+        return snapshot_deps(self._choice_inputs(src["tool"], src["depends"], tool)) == job.deps
+
+    def _on_choices(self, reply: Reply) -> None:
+        job, options = reply.lookup, reply.options
+        if not self._reply_applies(job):
+            return  # a late answer for another question, another form, or other values: dropped with its problem
+        name = job.param
+        box = self._choice_boxes[name]
         field = self.gui[name]
+        self._choice_pending.discard(
+            name
+        )  # last: everything below is in place when a waiting script sees it settled
+        self._show_choice_problem(name, field, reply.problem if not options else "")
         if not options:
             box.visible = False
             field.visible = True
-            problem = self._choice_problems.pop(key, None)
-            if problem:  # the text field stays, and the person is told why there is no list
-                text = "%s: type the value" % problem
-                tip = field.native.toolTip()
-                if text not in tip:
-                    field.native.setToolTip((tip + "\n" if tip else "") + text)
-                if not self.status.text():  # never overwrite the outcome of a run with a side question
-                    self.status.setText("⚠ " + text)
             return
         current = field.value or ""
         param: Param = next((p for p in cast(Tool, self.tool)["inputs"] if p["name"] == name), {})
@@ -762,6 +829,23 @@ class LabConstrictorWidget(QWidget):
         box.value = current if current in entries else entries[0]
         field.visible = False
         box.visible = True
+
+    def _show_choice_problem(self, name: str, field: Any, problem: str) -> None:
+        """Say why there is no list: in the field's tooltip and in the status line (the text field stays, the person types the value).
+        The tooltip is the field's own text plus the newest problem; a good answer takes the problem back."""
+        base = self._choice_base_tip.setdefault(name, field.native.toolTip())
+        if not problem:
+            field.native.setToolTip(base)
+            return
+        text = "%s: type the value" % problem
+        field.native.setToolTip((base + "\n" if base else "") + text)
+        current = self.status.text()
+        if not current or current == self._lookup_note:
+            self.status.setText("⚠ " + text)
+            self._lookup_note = self.status.text()
+        elif text not in current:  # an outcome of a run stays; the lookup problem is added behind it
+            self.status.setText(current + "\n⚠ " + text)
+            self._lookup_note = ""
 
     def _control_value(self, name: str) -> Any:
         source = self.file_sources.get(name)
@@ -1019,7 +1103,8 @@ class LabConstrictorWidget(QWidget):
                 task.wait()
                 self._signals.done.emit(task)
 
-            threading.Thread(target=wait_then_signal, daemon=True).start()
+            self._run_thread = threading.Thread(target=wait_then_signal, name="lc-run", daemon=True)
+            self._run_thread.start()
         # BLE001: e.g. the app's Python is gone or the worker died at once - undo the start
         except Exception as error:  # noqa: BLE001
             log.error("napari: cannot start %s for %s", self._run_tool["id"], self._run_app, exc_info=True)
@@ -1212,6 +1297,8 @@ class LabConstrictorWidget(QWidget):
         return list(box.choices).index(box.value)
 
     def _set_running(self, running: bool) -> None:
+        # the run owns the worker: lookups wait until it ends (SPEC_WRONG_SCIENCE 5.5)
+        self._lookups.hold(running)
         self.bar.setVisible(running)
         if running:
             self.bar.setRange(0, 0)
@@ -1504,6 +1591,10 @@ class LabConstrictorWidget(QWidget):
 
     def closeEvent(self, event: Any) -> None:  # Qt API name
         self._reaper.stop()
+        self._choice_timer.stop()
+        self._shut_down = True  # first: nothing started from now on outlives the widget (5.6)
+        self._form_gen = next_form_gen()
+        self._lookups.close()  # pending dropped, the one in flight cancelled, its thread joined
         if (
             self.task is not None and not self.task.done.is_set() and not self._closed
         ):  # closed during a run: stop it, do not leave worker or temp files
@@ -1524,7 +1615,15 @@ class LabConstrictorWidget(QWidget):
                     "inputs": self._request,
                 },
             )
-        self._workers.close_all()
+        self._workers.shutdown()
+        thread = self._run_thread
+        if (
+            thread is not None and thread.is_alive()
+        ):  # its worker is gone, so its wait has ended: no thread of the widget stays
+            thread.join(2.0)
+        self._lookups.hold(False)  # a run that was ended by the close no longer holds the worker
+        self._shut_down = False
+        self._was_closed = True
         super().closeEvent(event)
 
     @property

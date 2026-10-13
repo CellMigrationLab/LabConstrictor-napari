@@ -124,7 +124,7 @@ These are examples, not a list of applications permitted to connect. Choose tool
 
 ## Development
 
-The widget lives in `napari_labconstrictor/_widget.py`, with schema conversion in `_schema.py`, result presentation in `_results.py`, units and calibration in `_units.py`, layer/file export in `_export.py`, the frozen run (run identity) in `_snapshot.py`, run records, result folders, markers and the `prune` subprocess in `_retention.py`, the worker cache in `_workers.py` and the npe2 manifest in `napari.yaml`.
+The widget lives in `napari_labconstrictor/_widget.py`, with schema conversion in `_schema.py`, result presentation in `_results.py`, units and calibration in `_units.py`, layer/file export in `_export.py`, the frozen run (run identity) in `_snapshot.py`, run records, result folders, markers and the `prune` subprocess in `_retention.py`, the worker cache (one lock, one owner per worker) in `_workers.py`, the ChoicesFrom lookups (identity, one bounded queue, one thread) in `_lookups.py` and the npe2 manifest in `napari.yaml`.
 
 Install one Qt backend per environment, through its test extra (never both in one environment), and LabConstrictor-Tools:
 

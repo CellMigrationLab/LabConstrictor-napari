@@ -9,7 +9,7 @@ Places where the widget deliberately carries on with a simpler behaviour instead
 | --- | --- | --- |
 | `_units.microns_yx_from_tiff_checked` | A TIFF whose header cannot be read: no calibration is taken from it. Logged. | Status line: "could not read the pixel size from <file>: type it"; the field is left to be typed. |
 | `_widget._channel_names` | An image file whose channels cannot be read: no channel list. Logged. | Status line: "could not read the channels of <file>"; the run reports the unreadable file. |
-| `_widget._ask_choices` (ChoicesFrom) | The choices tool fails, answers without a list, or cannot run: the parameter stays a text field. Logged. | Status line: "could not get the choices for <parameter>: type the value". |
+| `_lookups.execute` (ChoicesFrom) | The choices tool fails, answers without a list, is cancelled, runs over 60 s (cancelled, its worker discarded) or cannot run: the parameter stays a text field. Logged. A reply for a form, tool, request or dependency values that are no longer current is dropped without a trace. | Status line and the field's tooltip: "could not get the choices for <parameter>: type the value" (or "... took more than 60 s and were cancelled ..."). |
 | `_results.ResultPresenter._table` | The previous table dock of a replaced output was already closed by the person: a new one is added. Logged. | Nothing (the new table appears). |
 
 ## Intended differences from the other hosts
