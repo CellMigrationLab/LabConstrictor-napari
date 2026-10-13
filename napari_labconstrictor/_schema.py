@@ -119,6 +119,9 @@ def _annotation(param: Param, layer_classes: dict[str, type]) -> tuple[Any, dict
     low, high = _numbers.limits(param)
     slider = (
         param.get("widget") == "slider"
+        and not param.get(
+            "pixel_size_of"
+        )  # a linked pixel size is a line of text: the person's entry is kept as typed
         and not param.get("nullable")
         and "minimum" in param
         and "maximum" in param
@@ -133,12 +136,6 @@ def _annotation(param: Param, layer_classes: dict[str, type]) -> tuple[Any, dict
         options["widget_type"] = (
             "Slider" if is_int else "FloatSlider"
         )  # the readout beside it is read-only (see _widget)
-    elif param.get("pixel_size_of"):
-        # the linked pixel-size field keeps its spin box: its state machine (SPEC 2.2) reads the box's edit events
-        options["min"], options["max"] = low, high
-        options["step"] = (
-            _FINE_STEP if param.get("unit") or abs(param.get("default", 1)) < 1 else _COARSE_STEP
-        )
     else:
         options["widget_type"] = IntegerField if is_int else FloatField
         options["min"], options["max"] = low, high

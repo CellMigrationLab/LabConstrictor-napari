@@ -6,7 +6,6 @@ registry (cached JSON) -> app/tool choosers -> schema -> synthesized signature -
 from __future__ import annotations
 
 import json
-import math
 import subprocess
 import tempfile
 import threading
@@ -138,6 +137,9 @@ class LabConstrictorWidget(QWidget):
         self.schemas: dict[str, Any] = {}
         self.gui: Any = None  # the magicgui form of the current tool
         self.file_sources: dict[str, Any] = {}  # image parameter -> "or file" widget
+        self._cal_commit: dict[str, Callable[[], None]] = (
+            {}
+        )  # PixelSizeOf parameter -> handle the entry still being typed
         self.cal_links: dict[str, LinkState] = {}  # PixelSizeOf parameter -> its state (unset / auto / user)
         self._cal_refresh: dict[str, Any] = (
             {}
@@ -419,7 +421,7 @@ class LabConstrictorWidget(QWidget):
             self.gui.native.setParent(None)
             self.gui = None
             self.file_sources = {}
-            self.cal_links, self._cal_refresh = {}, {}
+            self.cal_links, self._cal_refresh, self._cal_commit = {}, {}, {}
             self.unset_toggles = {}
             self.region_toggles = {}
             self.channel_boxes = {}
@@ -904,59 +906,50 @@ class LabConstrictorWidget(QWidget):
 
     def _link_calibration(self, image_name: str, pixel_name: str) -> None:
         """The pixel-size field follows the file chosen for its image, else the layer chosen for it, until the person types a value
-        (SPEC_WRONG_SCIENCE 2.2). Its state (unset / auto / user) lives in a `LinkState`; the box only shows it. A source without a
-        calibration clears the field (it never keeps the previous image's value), and a run sends what the state says.
+        (SPEC_WRONG_SCIENCE 2.2). Its state (unset / auto / user) lives in a `LinkState`; the box only shows it. The box is a line of
+        text like every number field (6.2): what the person types stays as typed and is checked at Run, an automatic value shows its
+        exact digits, and a source without a calibration clears the field (it never keeps the previous image's value).
         """
         image, pixel = self.gui[image_name], self.gui[pixel_name]
         file_edit = self.file_sources.get(image_name)
         link = LinkState(pixel_name, image_name)
         self.cal_links[pixel_name] = link
         self._cal_refresh[pixel_name] = lambda: refresh()
-        pixel.min = 0.0  # a pixel size is positive; the box's lowest position (0) is its "not set" display
-        pixel.native.setDecimals(10)  # the box must not round a calibration such as 0.0001 or 0.5002
-        pixel.native.setSpecialValueText("(not set)")
-        guard = [False]  # True while the host itself sets the box: that is not an edit by the person
+        self._cal_commit[pixel_name] = lambda: entry_finished()
+        pixel.native.setPlaceholderText("(not set)")  # the empty box is "not set"
         typing = [False]  # True from a keystroke in the box until that entry is handled
 
-        def show(value: float | None) -> None:
-            guard[0] = True
-            try:
-                pixel.value = value if value is not None else pixel.min
-            finally:
-                guard[0] = False
+        def show(value: float | str | None) -> None:
+            typing[0] = False  # the host replaces the text: no entry of the person is pending any more
+            pixel.set_value(_numbers.as_text(value))
             pixel.tooltip = link.tooltip()
 
         def refresh(*_: Any) -> None:
             derived = self._derive_calibration(image, file_edit)
-            link.source_changed(derived)
-            show(link.value)
+            if link.source_changed(derived):
+                show(link.value)  # a `user` value stays: its text is never rewritten
+            pixel.tooltip = link.tooltip()
 
-        def edited(*_: Any) -> None:
-            if guard[0]:
-                return
+        def edited() -> None:
             typing[0] = False
-            link.user_edit(pixel.value)
-            if link.state == UNSET:  # cleared: the image's calibration again
+            link.user_edit(pixel.native.text())
+            if link.state == UNSET:  # cleared (or typed 0): the image's calibration again
                 refresh()
             else:
-                show(link.user)
-
-        pixel.native.setKeyboardTracking(
-            False
-        )  # one edit event per entry, not one per keystroke ("0" on the way to "0.3" is not a clear)
+                pixel.tooltip = link.tooltip()
 
         def typed_text(*_: Any) -> None:
-            typing[0] = True
+            typing[0] = (
+                True  # only the person's keystrokes and pastes send `textEdited`; a text set by the host does not
+            )
 
         def entry_finished() -> None:
-            # Typing the value the box already shows is an edit too (Qt sends no valueChanged for it): the flag, not a comparison, decides
+            # One edit per entry (Enter, or the box losing focus, or a click on Run), not one per keystroke: "0" on the way to "0.3" is not
+            # a clear. Typing the text the box already shows is an edit too: the flag, not a comparison, decides.
             if typing[0]:
-                typing[0] = False
-                if not guard[0]:
-                    edited()
+                edited()
 
-        pixel.changed.connect(edited)
-        pixel.native.lineEdit().textEdited.connect(typed_text)
+        pixel.native.textEdited.connect(typed_text)
         pixel.native.editingFinished.connect(entry_finished)
         image.changed.connect(refresh)
         if file_edit is not None:
@@ -970,6 +963,7 @@ class LabConstrictorWidget(QWidget):
         self.gui.insert(list(self.gui).index(pixel) + 1, button)
 
         def edited_clear() -> None:
+            typing[0] = False
             link.user_edit(None)
             refresh()
 
@@ -1014,6 +1008,9 @@ class LabConstrictorWidget(QWidget):
         regions = [name for name, toggle in self.region_toggles.items() if toggle.value]
         calibration = {}
         for name, link in self.cal_links.items():
+            self._cal_commit[
+                name
+            ]()  # an entry typed but not yet confirmed (no Enter, the focus still in the box) counts
             if (
                 link.state != USER
             ):  # the layer's scale or units may have been edited since it was chosen: read it again
@@ -1202,7 +1199,10 @@ class LabConstrictorWidget(QWidget):
             if param.get("nullable"):  # Optional[float]: null, nothing is blocked
                 return None
             raise ValueError(_calibration.CALIBRATION_REQUIRED.format(param=param["name"], of=picked["of"]))
-        if not math.isfinite(value) or value <= 0:
+        value = _numbers.check(
+            param, value
+        )  # what was typed, exactly: refused beyond a limit or when not a number, never clamped
+        if value <= 0:
             raise ValueError(
                 "[invalid_parameter] '%s' must be greater than 0 (um per pixel)" % param["label"]
             )
