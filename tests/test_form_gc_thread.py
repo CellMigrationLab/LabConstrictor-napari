@@ -13,7 +13,9 @@ import gc
 import threading
 
 import _paths  # noqa: F401  (must come first)
+import qtpy
 from _numhelpers import choose, expect, finish, pump, until, w
+from qtpy.QtCore import QCoreApplication, QEvent, Qt
 
 deleted_by = []
 
@@ -28,14 +30,36 @@ def collect_in_a_thread():
     thread.join()
 
 
-gc.disable()  # only the collector thread collects: when the garbage is freed is then decided by the test, not by an allocation
+def python_owns(widget):
+    """Does Python own the C++ object (so that freeing the wrapper, in any thread, deletes the widget)?"""
+    if qtpy.API_NAME.startswith("PySide"):
+        import shiboken6
+
+        return shiboken6.ownedByPython(widget)
+    from PyQt6 import sip
+
+    return sip.ispyowned(widget)
+
+
 choose("Free integer")
-w.gui.native.destroyed.connect(note_deletion)
+left = w.gui.native
+left.destroyed.connect(note_deletion, Qt.ConnectionType.DirectConnection)  # runs in the thread that deletes
 choose("Free float")  # the form of "Free integer" is left
+expect(
+    "the left form is not owned by Python (a collection in any thread would delete it)", not python_owns(left)
+)
+expect(
+    "... it is a hidden child of the widget, so Qt owns it",
+    left.parent() is w and not left.isVisible(),
+    left.parent(),
+)
 collect_in_a_thread()
-until(lambda: deleted_by)
-expect("the left form is deleted", len(deleted_by) == 1, deleted_by)
-expect("... by the GUI thread", deleted_by == [threading.main_thread().name], deleted_by)
+expect("a collection in another thread does not delete it", not deleted_by, deleted_by)
+# a test pumps the loop by hand, and `processEvents` leaves deferred deletions alone: ask for them (a running loop does it by itself)
+QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+del left
+until(lambda: len(deleted_by) == 1, timeout=30)
+expect("the GUI thread deletes it", deleted_by == [threading.main_thread().name], deleted_by)
 
 stop = threading.Event()
 
@@ -48,12 +72,13 @@ def collect_all_the_time():
 
 collector = threading.Thread(target=collect_all_the_time, name="collector", daemon=True)
 collector.start()
-for _ in range(40):
+for _ in range(60):
     choose("Free integer")
     choose("Free float")
 stop.set()
 collector.join(30)
 pump(0.5)
-expect("forms switched 80 times while another thread collects", not collector.is_alive() and w.gui is not None)
-gc.enable()
+expect(
+    "forms switched 120 times while another thread collects", not collector.is_alive() and w.gui is not None
+)
 finish()

@@ -71,7 +71,6 @@ def _leave(code=None):
         code = code or 1
     sys.stdout.flush()
     sys.stderr.flush()
-    faulthandler.disable()  # see _prunes_have_ended: on Windows it prints first-chance access violations of ExitProcess itself
     os._exit(code)
 
 
