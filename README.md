@@ -76,6 +76,8 @@ python -m pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/a
 python -m pip install https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/heads/main.zip
 ```
 
+**Which Tools:** the plugin needs LabConstrictor-Tools **v0.3.0-alpha.1 or newer** (version `0.3.0a1`; the `main` archive above is). It uses `runs.build_record`, `runs.record_json` and `runs.done_status` to write `run.json` and the done marker exactly as Tools does. Those came in v0.2.0-rc.2, which reports the same version as rc.1 (`0.2.0rc1`), so `pip` requires `labconstrictor-tools>=0.3.0a1`, and the plugin also checks the version and the three functions when it loads: with an older Tools it refuses to load with a message that says to update Tools.
+
 Neither is on PyPI yet. These are source archives, so no `git` program is needed (with git you can use `git+https://github.com/CellMigrationLab/<repository>` instead).
 
 The plugin installs no Qt backend: it uses `qtpy` and runs on the one your napari has. If you install napari yourself, we recommend a **Qt6** backend: `python -m pip install "napari[pyqt6]"` or `python -m pip install "napari[pyside6]"`. PyQt5 is not tested here; napari deprecated it in 0.8.0 and plans to drop Qt5 support.
@@ -99,7 +101,7 @@ Failures appear in the status line; **Details...** shows the error, traceback, w
 
 ### Run records and cleanup
 
-Every run leaves a record, `<LC_HOME>/runs/<time>_<app>_<tool>/run.json` (`LC_HOME` is `~/.labconstrictor` unless the environment variable says otherwise). It holds the app, tool, status, error, inputs, results, timings and the tail of the worker's output.
+Every run leaves a record, `<LC_HOME>/runs/<time>_<app>_<tool>/run.json` (`LC_HOME` is `~/.labconstrictor` unless the environment variable says otherwise). It holds the app, tool, status, error, inputs, results, timings and the tail of the worker's output (the last 4000 characters). The content and the status of the done marker come from `labconstrictor_tools.runs` (`build_record`, `done_status`), the same code Tools uses for its own records; the plugin adds only the run's `run_id` and start time, and keeps the reserved `_calibration` input under `inputs`.
 
 What the plugin does about cleanup (rules: section 3 of [SPEC_WRONG_SCIENCE](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/SPEC_WRONG_SCIENCE.md)):
 

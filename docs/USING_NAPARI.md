@@ -78,7 +78,7 @@ Use **Copy as command** (a terminal line or a Python snippet) to repeat the last
 
 ## Run records
 
-Every run leaves `<LC_HOME>/runs/<time>_<app>_<tool>/run.json` (default `LC_HOME` is `~/.labconstrictor`). It records the app, tool, status, error, inputs, results, timings and the tail of the worker output. **Details...** in the widget shows the same information for the last run.
+Every run leaves `<LC_HOME>/runs/<time>_<app>_<tool>/run.json` (default `LC_HOME` is `~/.labconstrictor`). It records the app, tool, status, error, inputs, results, timings and the tail of the worker output (last 4000 characters); it is written with `labconstrictor_tools.runs`, so it is the record Tools writes for its own runs. **Details...** in the widget shows the same information for the last run.
 
 The widget never deletes run records or result folders. It writes an owner marker when it makes the record, a done marker when the run has ended, keeps in `<LC_HOME>/results` the files a tool reported (`FileOut`) and the results it could not show, and then starts `labconstrictor-tools prune` in the background (an app whose Tools lacks the `retention_prune` feature gets no cleanup and a line in the log). Only `prune` removes anything: owned, finished folders beyond the newest 50 run records and 20 result folders. Run `labconstrictor-tools prune --dry-run` to see what a cleanup would remove. The rules are in section 3 of [SPEC_WRONG_SCIENCE](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/SPEC_WRONG_SCIENCE.md).
 
