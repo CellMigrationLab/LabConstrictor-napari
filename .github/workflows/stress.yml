@@ -1,0 +1,51 @@
+name: stress
+on:
+  push:
+    branches: ["claude/tmp-stress-*"]
+  workflow_dispatch:
+jobs:
+  stress:
+    timeout-minutes: 60
+    name: stress (${{ matrix.os }}, ${{ matrix.qt }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, qt: pyside6, script: test_async_close.py, n: 30 }
+          - { os: windows-latest, qt: pyqt6, script: test_async_close.py, n: 30 }
+          - { os: macos-latest, qt: pyside6, script: test_number_run.py, n: 25 }
+    runs-on: ${{ matrix.os }}
+    env:
+      LC_EXPECT_QT: ${{ matrix.qt == 'pyqt6' && 'PyQt6' || 'PySide6' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip, cache-dependency-path: pyproject.toml }
+      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-${{ matrix.qt }}]"
+      - name: Mesa llvmpipe software OpenGL (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          MESA_VERSION: "24.2.7"
+          MESA_SHA256: adbb439c1bf833a1e24a735a6dea3c3ceaf8459dfddd811a12f5aa5c832ad3fe
+        run: |
+          curl -fsSL -o mesa.7z "https://github.com/pal1000/mesa-dist-win/releases/download/${MESA_VERSION}/mesa3d-${MESA_VERSION}-release-msvc.7z"
+          echo "${MESA_SHA256}  mesa.7z" | sha256sum -c -
+          7z x mesa.7z -omesa -y > /dev/null
+          PYDIR="$(dirname "$(python -c 'import sys; print(sys.executable)')")"
+          cp mesa/x64/opengl32.dll mesa/x64/libgallium_wgl.dll mesa/x64/libglapi.dll "$PYDIR"/
+          echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
+          echo "QT_OPENGL=desktop" >> "$GITHUB_ENV"
+      - name: Repeat
+        shell: bash
+        working-directory: tests
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then export QT_OPENGL=software; fi
+          bad=0; codes=""
+          for i in $(seq 1 ${{ matrix.n }}); do
+            python ${{ matrix.script }} > "run_$i.log" 2>&1; rc=$?
+            codes="$codes $rc"
+            if [ $rc -ne 0 ]; then bad=$((bad+1)); echo "::group::run $i exit $rc"; tail -40 "run_$i.log"; echo "::endgroup::"; fi
+          done
+          echo "STRESS ${{ matrix.script }} ${{ matrix.os }} ${{ matrix.qt }}: $bad failed of ${{ matrix.n }}; exit codes:$codes"
+          [ $bad -eq 0 ]
