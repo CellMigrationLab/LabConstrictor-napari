@@ -18,9 +18,11 @@ from _calhelpers import (
     fresh,
     known,
     link,
+    not_set,
     request,
     run_real,
     settle,
+    shown,
     tiff,
     type_value,
     viewer,
@@ -128,9 +130,7 @@ check_known("file_wins_over_the_open_image", 0.5, source="file")
 
 # T8: a required linked field with the declared default 1.0 and a source that is unknown: refused, the default is not sent
 start()
-expect(
-    "CAL-T8_no_image_at_all_shows_not_set", field() == 0 and link().state == "unset", (field(), link().state)
-)
+expect("CAL-T8_no_image_at_all_shows_not_set", not_set() and link().state == "unset", (shown(), link().state))
 choose(U)
 check_unknown("CAL-T8")
 inputs, _ = request()

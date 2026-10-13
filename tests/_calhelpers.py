@@ -112,14 +112,29 @@ def request():
     return prepared[0], None
 
 
-def type_value(text):
-    """The person types into the box and presses Enter: key events, so Qt's own edit signals fire."""
-    spin = w.gui[FIELD].native
-    edit = spin.lineEdit()
+def type_value(text, enter=True):
+    """The person types into the box (a line of text) key by key, and presses Enter unless `enter` is False: Qt's own edit signals fire."""
+    edit = w.gui[FIELD].native
+    edit.setFocus()
     edit.selectAll()
-    QTest.keyClicks(edit, text)
-    QTest.keyClick(spin, Qt.Key.Key_Return)
+    if text:
+        QTest.keyClicks(edit, text)
+    else:
+        QTest.keyClick(edit, Qt.Key.Key_Backspace)  # delete the selection
+    if enter:
+        QTest.keyClick(edit, Qt.Key.Key_Return)
     settle()
+
+
+def shown():
+    """The text in the box, exactly as it is."""
+    return w.gui[FIELD].native.text()
+
+
+def not_set():
+    """The box is empty and says '(not set)' (the display of an unset field), and holds no value."""
+    box = w.gui[FIELD]
+    return box.native.text() == "" and box.native.placeholderText() == "(not set)" and box.value is None
 
 
 def known(value, expected):
@@ -155,7 +170,7 @@ def check_unknown(tag, warning=None):
         refused,
     )
     expect(tag + "_nothing_sent", inputs is None)
-    expect(tag + "_field_cleared", field() == 0 and link().state == "unset", (field(), link().state))
+    expect(tag + "_field_cleared", not_set() and link().state == "unset", (shown(), link().state))
     expect(tag + "_tooltip", w.gui[FIELD].tooltip == TOOLTIP_UNKNOWN.format(of="image"), w.gui[FIELD].tooltip)
     if warning is not None:
         w.status.setText("")

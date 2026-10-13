@@ -5,7 +5,7 @@ Every tool reports what it RECEIVED, as text with the Python type, so a test see
 
 from typing import Annotated, Optional
 
-from labconstrictor_tools import Max, MessageOut, Min, Name, Widget, tool
+from labconstrictor_tools import Axes, Image, Max, MessageOut, Min, Name, PixelSizeOf, Unit, Widget, tool
 
 
 def _said(**values) -> Annotated[MessageOut, Name("received")]:
@@ -72,3 +72,29 @@ def wide_slider(
 @tool("Required positive")
 def required_positive(n: Annotated[int, Min(5), Max(9)]) -> Annotated[MessageOut, Name("received")]:
     return _said(n=n)
+
+
+@tool("Linked free")
+def linked_free(
+    image: Annotated[Image, Axes("YX")], pixel_size: Annotated[float, Unit("um/px"), PixelSizeOf("image")]
+) -> Annotated[MessageOut, Name("received")]:
+    """A linked pixel size with no Min / Max: the form's own limits (+-1e15) apply."""
+    return _said(pixel_size=pixel_size)
+
+
+@tool("Linked bounded")
+def linked_bounded(
+    image: Annotated[Image, Axes("YX")],
+    pixel_size: Annotated[float, Min(0), Max(10), Unit("um/px"), PixelSizeOf("image")],
+) -> Annotated[MessageOut, Name("received")]:
+    """A linked pixel size with a declared range (NUM-05 on the linked field)."""
+    return _said(pixel_size=pixel_size)
+
+
+@tool("Linked optional")
+def linked_optional(
+    image: Annotated[Image, Axes("YX")],
+    pixel_size: Annotated[Optional[float], Unit("um/px"), PixelSizeOf("image")] = None,  # noqa: UP045
+) -> Annotated[MessageOut, Name("received")]:
+    """An Optional linked pixel size: unset is None."""
+    return _said(pixel_size=pixel_size)
