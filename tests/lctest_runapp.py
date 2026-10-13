@@ -17,12 +17,15 @@ from labconstrictor_tools import (
     Labels,
     LabelsOut,
     MessageOut,
+    Min,
     Name,
+    PixelSizeOf,
     PointsOut,
     RegionOf,
     Scalars,
     ShapesOut,
     TableOut,
+    Unit,
     check_cancel,
     tool,
 )
@@ -107,6 +110,27 @@ def big_picture() -> Annotated[ImageOut, Name("picture")]:
 @tool("Echo")
 def echo(a: float = 1.0) -> Scalars:
     return {"a": a}
+
+
+@tool("Pixel size required")
+def pixel_size_required(
+    image: Annotated[Image, Axes("YX")],
+    pixel_size: Annotated[float, Min(0), Unit("um/px"), PixelSizeOf("image")] = 1.0,
+) -> Scalars:
+    """A required linked field whose declared default (1.0) was written for an author's example image (CAL-T8). Reports what it RECEIVED."""
+    return {"pixel_size": pixel_size}
+
+
+@tool("Pixel size optional")
+def pixel_size_optional(
+    image: Annotated[Image, Axes("YX")],
+    pixel_size: Annotated[Optional[float], Unit("um/px"), PixelSizeOf("image")] = None,  # noqa: UP045
+) -> Scalars:
+    """An Optional linked field: unset must arrive as None (CAL-T2). Reports what it RECEIVED."""
+    return {
+        "pixel_size": -1.0 if pixel_size is None else pixel_size,
+        "was_none": 1.0 if pixel_size is None else 0.0,
+    }
 
 
 @tool("Region values")

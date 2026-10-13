@@ -85,6 +85,9 @@ class RunSnapshot:
     unset: frozenset[str]  # optional parameters left unset (omitted from the request)
     channels: Mapping[str, int | None]  # image parameter -> the channel picked (or None)
     selection: SelectionRef | None
+    calibration: Mapping[str, Mapping[str, Any]] = field(
+        default_factory=dict
+    )  # PixelSizeOf parameter -> {value, entry, of} as its field's state said at the click (SPEC_WRONG_SCIENCE 2.2)
     frames: Mapping[str, Frame] = field(
         default_factory=dict
     )  # image parameter -> the frame of its exported image (layer or file)
@@ -162,6 +165,7 @@ def take(
     unset: Iterable[str] = (),
     channels: Mapping[str, int | None] | None = None,
     selection_layer: Any | None = None,
+    calibration: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> RunSnapshot:
     """Freeze a run: what the form said, which layer objects it named, the selection geometry. Call it on the UI thread first."""
     files = dict(files or {})
@@ -203,4 +207,5 @@ def take(
         channels=MappingProxyType(dict(channels or {})),
         selection=selection_of(selection_layer),
         frames=MappingProxyType(frames),
+        calibration=MappingProxyType(copy.deepcopy(dict(calibration or {}))),
     )
