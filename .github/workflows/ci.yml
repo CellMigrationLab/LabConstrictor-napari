@@ -100,6 +100,7 @@ jobs:
         with: { python-version: "3.12", cache: pip, cache-dependency-path: pyproject.toml }
       - run: pip install black==26.10.0 ruff==0.16.10
       - run: black --check . && ruff check .
+      - run: python scripts/check_annotations.py   # every function annotated (standard library only; see README, Development)
   typecheck:
     timeout-minutes: 45
     runs-on: ubuntu-latest
@@ -113,4 +114,4 @@ jobs:
       - run: >
           pip install mypy==1.20.2 "napari[pyqt6]==0.9.2" magicgui==0.10.2 qtpy==2.4.3
           "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e .
-      - run: mypy napari_labconstrictor
+      - run: mypy   # the package, the tests and the scripts (paths and settings: [tool.mypy] in pyproject.toml)
