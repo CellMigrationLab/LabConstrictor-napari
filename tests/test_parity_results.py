@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import _paths  # noqa: F401  (must come first)
+import numpy as np
 from _harness import expect, finish, viewer
 
 from napari_labconstrictor._results import COULD_NOT_DISPLAY, MAX_SHAPES, NOT_FINITE, ResultPresenter
@@ -31,7 +32,10 @@ features = [
 import napari_labconstrictor._results as results
 
 results.MAX_SHAPES = 50
-presenter = ResultPresenter(viewer, "app", {}, replace=(), docks={})
+source = viewer.add_image(
+    np.zeros((8, 8)), name="source"
+)  # outlines need an image to be placed on (SPEC_WRONG_SCIENCE 1.1.6)
+presenter = ResultPresenter(viewer, "app", {"img": source}, replace=(), docks={}, image_inputs=["img"])
 summary = presenter.show({"type": "shapes", "name": "multi", "path": str(work / "multi.geojson"), "n": 60})
 results.MAX_SHAPES = MAX_SHAPES
 expect(
@@ -47,7 +51,7 @@ expect(
 expect("summary_counts_features", summary == "outlines 'multi' (50)", summary)
 
 # fewer features than the cap: no sentence, nothing left out even with several parts each
-presenter = ResultPresenter(viewer, "app2", {}, replace=(), docks={})
+presenter = ResultPresenter(viewer, "app2", {"img": source}, replace=(), docks={}, image_inputs=["img"])
 presenter.show({"type": "shapes", "name": "multi", "path": str(work / "multi.geojson"), "n": 60})
 expect(
     "below_the_cap_everything_is_shown",

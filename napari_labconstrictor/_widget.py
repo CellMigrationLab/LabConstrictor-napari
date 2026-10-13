@@ -39,6 +39,7 @@ from qtpy.QtWidgets import (
 from . import _retention, _snapshot
 from ._export import channel_file, export_layer, selection_mask
 from ._export import is_set as _is_set
+from ._frame import FrameError
 from ._results import COULD_NOT_DISPLAY, FileInput, ResultPresenter
 from ._schema import Param, Tool, presentation_order, rule_satisfied, signature_from_schema
 from ._units import (
@@ -876,6 +877,10 @@ class LabConstrictorWidget(QWidget):
             return self._export_inputs(form_values, job_dir, snapshot), snapshot
         except ValueError as error:  # something the user can fix: say it plainly
             _retention.discard_job_dir(job_dir)
+            if isinstance(
+                error, FrameError
+            ):  # a refusal of SPEC_WRONG_SCIENCE 1.4: the code goes to the log, the sentence to the person
+                log.warning("napari: run refused (%s): %s", error.code, error)
             self.status.setText("⚠ %s" % error)
         # BLE001: e.g. the disk is full while saving a layer - clean up, say so, log it
         except Exception as error:  # noqa: BLE001
@@ -1200,7 +1205,13 @@ class LabConstrictorWidget(QWidget):
                     withheld.append((result, problem))
                     summaries[index] = ""
                     continue
+                before = result.get("path") if isinstance(result, dict) else None
                 summaries[index] = self.presenter.show(result)
+                if any(result is kept for kept in self.presenter.file_results):
+                    # points / outlines with no image input are a table or a file (SPEC 1.1.5, 1.1.6): the file is kept, the status names it
+                    moved = self._keep_reported_file(result, force=True)
+                    if moved is not None and before:
+                        summaries[index] = (summaries[index] or "").replace(before, str(moved))
             for index, text in enumerate(
                 summaries
             ):  # not drawn although it was tried: keep the file, say where it is

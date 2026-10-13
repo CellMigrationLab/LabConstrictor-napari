@@ -96,9 +96,7 @@ expect("hole_note_in_the_message", "hole" in text and "1 outline" in text and "O
 
 w.gui["threshold"].value = 0.5
 run()
-v.layers["interactions:blobs"].visible = (
-    False  # (image and labels results do not take the input scale yet: unrelated to shapes)
-)
+v.layers["interactions:blobs"].visible = False
 v.reset_view()
 v.layers.selection.active = v.layers["interactions:outlines"]
 pump(0.5)
@@ -134,7 +132,10 @@ features = [
     for i in range(count)
 ]
 (folder / "many.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}))
-presenter = ResultPresenter(v, "big", {}, replace=(), docks={})
+source = v.add_image(
+    np.zeros((8, 8)), name="source"
+)  # outlines need an image to be placed on (SPEC_WRONG_SCIENCE 1.1.6)
+presenter = ResultPresenter(v, "big", {"img": source}, replace=(), docks={}, image_inputs=["img"])
 note = presenter.show({"type": "shapes", "name": "many", "path": str(folder / "many.geojson"), "n": count})
 expect(
     "limit_shows_the_first_50000",

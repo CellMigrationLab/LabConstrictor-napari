@@ -143,8 +143,9 @@ pump(0.8)
 run()
 expect(
     "first_run_one_layer_one_points_layer",
-    [l.name for l in v.layers] == ["adv:img", "adv:pts"],
-    [l.name for l in v.layers],
+    [l.name for l in v.layers] == ["adv:img"]
+    and ("adv", "pts") in w._docks,  # no image input: the points are a table (SPEC 1.1.6)
+    ([l.name for l in v.layers], list(w._docks)),
 )
 expect(
     "message_text_is_not_executed_as_html",
@@ -166,13 +167,13 @@ expect(
 )
 expect(
     "zero_points_leave_an_empty_layer",
-    "adv:pts" in [l.name for l in v.layers] and len(v.layers["adv:pts"].data) == 0,
+    ("adv", "pts") in w._docks and w._docks[("adv", "pts")].rowCount() == 0,
 )
 w.gui.rows.value = 50000
 run()
 expect(
     "fifty_thousand_points",
-    w.last_task.status == "COMPLETE" and len(v.layers["adv:pts"].data) == 50000,
+    w.last_task.status == "COMPLETE" and w._docks[("adv", "pts")].rowCount() == 50000,
     w.status.text(),
 )
 w.gui.rows.value = 3
@@ -186,7 +187,10 @@ w.gui.fail.value = True
 run()
 expect(
     "failure_hides_the_previous_message_and_keeps_layers",
-    w.message_label.isHidden() and "deliberate failure" in w.status.text() and len(v.layers) == 2,
+    w.message_label.isHidden()
+    and "deliberate failure" in w.status.text()
+    and len(v.layers) == 1
+    and ("adv", "pts") in w._docks,
     (w.status.text(), len(v.layers)),
 )
 # a layer the user renamed is never replaced

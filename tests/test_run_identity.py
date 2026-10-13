@@ -20,7 +20,6 @@ C = conformance.load()
 WS = C["wrong_science"]
 M = WS["retention"]["markers"]
 R.use_recorder()
-unsupported = []
 
 ids = {f["id"] for f in WS["run_identity"]["fixtures"]}
 for needed in ("RUN-01", "RUN-02", "RUN-03", "RUN-04", "RUN-05", "RUN-06"):
@@ -294,10 +293,39 @@ expect(
     points is not None and tuple(points.scale) == (3.0, 3.0),
     points and points.scale,
 )
-unsupported.append(
-    "RUN-05 translate / rotate / shear / affine: UNSUPPORTED here - placement carries only the scale until the coordinate-frame "
-    "change (issue #33); the scale half is tested above"
-)
+# translate, rotate, shear and the affine matrix (the coordinate-frame theme, issues #31 #33 #34): placement reads the CURRENT full transform
+for label, change in (
+    ("translate", {"translate": (100.0, 40.0)}),
+    ("rotate", {"rotate": 30}),
+    ("shear", {"shear": [0.3]}),
+    ("affine", {"affine": [[1, 0.2, 5], [0.1, 1, -7], [0, 0, 1]]}),
+    ("everything", {"scale": (3.0, 2.0), "translate": (10.0, -4.0), "rotate": 20, "shear": [0.1]}),
+):
+    A, B = fresh()
+    gate = start_on(A)
+    run_id = w.snapshot.run_id
+    world_at_the_click = A.data_to_world((2, 3))
+    for key, value in change.items():
+        setattr(A, key, value)
+    R.release(gate)
+    R.wait_done()
+    points = points_of(run_id)
+    drawn_at = points.data_to_world(tuple(points.data[0])) if points is not None else None
+    expect(
+        "RUN-05_points_follow_the_current_%s_of_A" % label,
+        drawn_at is not None and np.allclose(drawn_at, A.data_to_world((2, 3))),
+        (drawn_at, A.data_to_world((2, 3))),
+    )
+    expect(
+        "RUN-05_%s_really_moved_the_layer_during_the_run" % label,
+        not np.allclose(world_at_the_click, A.data_to_world((2, 3))),
+        (world_at_the_click, A.data_to_world((2, 3))),
+    )
+    labels = next((layer for layer in drawn(run_id) if layer.name.startswith("runapp:mask")), None)
+    expect(
+        "RUN-05_labels_follow_the_current_%s_of_A_too" % label,
+        labels is not None and np.allclose(labels.data_to_world((5, 6)), A.data_to_world((5, 6))),
+    )
 
 # ---- RUN-06: two runs in a row, A then B: each result has its own run id and lands on its own source --------------------------------
 A, B = fresh()
@@ -321,6 +349,4 @@ expect(
     [R.read_json(p / "run.json")["run_id"] for p in runs] == [first, second],
 )
 
-for line in unsupported:
-    print(line)
 finish()
