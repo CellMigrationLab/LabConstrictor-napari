@@ -55,6 +55,9 @@ _async.case("ASY-04", "change a dependency 50 times in 1 s")
 w.tool_box.value = "Pick one"
 pump(0.3)
 w._workers.close_all()  # a worker of its own to count: nothing cached from above
+# the peaks are high-water marks of the whole run: ASY-05 above asks two parameters at once, and when the lookup thread is slow to start
+# (macOS CI) both are pending together, which is allowed there. ASY-04 is about this phase only, so it starts its own count.
+w._lookups.peak_in_flight = w._lookups.peak_pending = 0
 dirs = [_async.folder("d%d" % i) for i in range(50)]
 before = len(started)
 issued_before = w._request_id
