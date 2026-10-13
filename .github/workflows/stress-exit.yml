@@ -1,0 +1,31 @@
+name: stress-exit
+on:
+  push:
+    branches: ["claude/tmp-stress-exit"]
+  workflow_dispatch:
+jobs:
+  probe:
+    timeout-minutes: 40
+    name: probe (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
+      - name: Probe
+        shell: bash
+        run: |
+          cp tmp_probe/exit_probe.py exit_probe.py
+          for mode in racy spawned idle; do
+            bad=0; codes=""
+            for i in $(seq 1 300); do
+              rc=0; python exit_probe.py $mode > probe.log 2>&1 || rc=$?
+              if [ $rc -ne 0 ]; then bad=$((bad+1)); codes="$codes $rc"; fi
+            done
+            echo "PROBE $RUNNER_OS mode=$mode: $bad nonzero exits of 300; codes:$codes"
+          done
