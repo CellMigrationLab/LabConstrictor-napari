@@ -166,16 +166,38 @@ expect(
     w.status.text(),
 )
 expect(
-    "zero_points_leave_an_empty_layer",
+    "zero_points_leave_an_empty_table",
     ("adv", "pts") in w._docks and w._docks[("adv", "pts")].rowCount() == 0,
 )
-w.gui.rows.value = 50000
+# this tool has no image input, so its points are a table (SPEC_WRONG_SCIENCE 1.1.6). A table is filled cell by cell with Qt calls, and
+# PySide6 6.12.0 on Python 3.11 loses one reference to None per void Qt call (see tests/_paths.py), so a 100 000-cell table made by a test
+# can abort the interpreter: the widget run uses 5 000 rows, and the 50 000 points as a Points layer are checked on the presenter
+w.gui.rows.value = 5000
 run()
 expect(
-    "fifty_thousand_points",
-    w.last_task.status == "COMPLETE" and w._docks[("adv", "pts")].rowCount() == 50000,
+    "five_thousand_points_are_a_table",
+    w.last_task.status == "COMPLETE" and w._docks[("adv", "pts")].rowCount() == 5000,
     w.status.text(),
 )
+import numpy as np  # noqa: E402
+
+from napari_labconstrictor._results import ResultPresenter  # noqa: E402
+
+source = v.add_image(np.zeros((8, 8)), name="adv_source")
+csv_path = tools / "fifty_thousand.csv"
+np.savetxt(
+    csv_path,
+    np.column_stack([np.arange(50000.0), np.arange(50000.0)]),
+    delimiter=",",
+    header="y,x",
+    comments="",
+)
+ResultPresenter(v, "adv50k", {"img": source}, image_inputs=["img"]).show(
+    {"type": "points", "name": "pts", "path": str(csv_path), "n": 50000}
+)
+expect("fifty_thousand_points", len(v.layers["adv50k:pts"].data) == 50000, len(v.layers["adv50k:pts"].data))
+v.layers.remove(v.layers["adv50k:pts"])
+v.layers.remove(source)
 w.gui.rows.value = 3
 w.gui.text_length.value = 3000
 run()
