@@ -11,11 +11,11 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from labconstrictor_tools import log, registry
+from labconstrictor_tools import runs as tools_runs
 from labconstrictor_tools.protocol import JOB_DIR_KEY
 from magicgui import magicgui
 from magicgui import widgets as mw
@@ -1397,7 +1397,7 @@ class LabConstrictorWidget(QWidget):
             self._workers.release(self._run_app, self.worker, keep=self.reuse_box.isChecked() and healthy)
             _retention.discard_job_dir(self._job_dir)  # the host's own temporary folder (outside LC_HOME)
             self.status.setText(_unfinished_text(task))
-            self._end_markers(_retention.done_status(task.status, getattr(task, "cancel_requested", False)))
+            self._end_markers(tools_runs.done_status(task.status, getattr(task, "cancel_requested", False)))
             return
         summaries, withheld = self._show_results(
             task
@@ -1560,28 +1560,18 @@ class LabConstrictorWidget(QWidget):
             fresh = total - self._stderr_mark
             stderr = stderr[-fresh:] if fresh > 0 else ""
         snapshot = self.snapshot
-        content = {
-            "run_id": snapshot.run_id if snapshot else None,
-            "app": self._run_app,
-            "app_version": (self.apps.get(self._run_app) or {}).get("version"),
-            "tool": self._run_tool["id"],
-            "started_utc": snapshot.started if snapshot else None,
-            "finished_utc": datetime.now(UTC).isoformat(),
-            "seconds": round(self.timings["run_wall_s"], 2),
-            "status": task.status,
-            "error": task.error,
-            "code": task.code,
-            "traceback": task.traceback,
-            "inputs": {k: v for k, v in self._request.items() if k != JOB_DIR_KEY},
-            "results": [
-                {k: v for k, v in r.items() if k != "matrix_yx"} for r in task.outputs.get("results", [])
-            ],
-            "timings": task.outputs.get("timings"),
-            "interpreter": task.outputs.get("diagnostics"),
-            "stderr_tail": stderr[-STDERR_TAIL_CHARS:],
-        }
+        content = _retention.run_record(
+            self._run_app,
+            self._run_tool["id"],
+            self._request,
+            task,
+            self.timings["run_wall_s"],
+            stderr,
+            snapshot,
+            keep_inputs=(CALIBRATION_KEY,),
+        )
         self.last_record = self._finish_record(
-            _retention.done_status(task.status, getattr(task, "cancel_requested", False)), content
+            tools_runs.done_status(task.status, getattr(task, "cancel_requested", False)), content
         )
         lines = [
             "status: %s" % task.status,
@@ -1605,7 +1595,7 @@ class LabConstrictorWidget(QWidget):
         if self._record is None:
             return None
         try:
-            text = json.dumps(content, indent=2, default=str)
+            text = tools_runs.record_json(content)
         except (TypeError, ValueError) as error:
             log.warning("napari: could not serialize the run record (%s: %s)", type(error).__name__, error)
             text = json.dumps({"status": content.get("status"), "run_id": content.get("run_id")})

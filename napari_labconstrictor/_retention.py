@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from labconstrictor_tools import log, registry
+from labconstrictor_tools import runs as tools_runs
 
 try:
     from labconstrictor_tools import retention as _tools_retention
@@ -44,15 +45,87 @@ PRUNE_TIMEOUT_S = (
     900  # a prune that takes longer than this is stopped (it is safe to stop: the next one finishes the job)
 )
 _NAME_LIMIT = 64
-_DONE_STATUS = {"COMPLETE": "ok", "CANCELED": "cancelled"}  # every other task status is "failed"
+TOOLS_MINIMUM = (
+    "0.3.0a1"  # the Tools version string (tag v0.3.0-alpha.1) the plugin needs; pyproject says the same
+)
+TOOLS_MINIMUM_TAG = "v0.3.0-alpha.1"
+_RUN_HELPERS = (
+    "build_record",
+    "record_json",
+    "done_status",
+)  # additive functions of labconstrictor_tools.runs (docs/PROTOCOL.md)
 
 
-def done_status(task_status: str, cancel_requested: bool = False) -> str:
-    """The `.lc-done.json` status for a task status. A worker that had to be killed after the person pressed Cancel is a cancelled
-    run (the status line says "cancelled (worker stopped)"), not a crash."""
-    if task_status == "CRASHED" and cancel_requested:
-        return "cancelled"
-    return _DONE_STATUS.get(task_status, "failed")
+def _installed_version() -> str:
+    try:
+        from labconstrictor_tools._version import __version__
+
+        return str(__version__)
+    except ImportError:
+        return ""
+
+
+def tools_problem(runs_module: Any = tools_runs, installed: str | None = None) -> str | None:
+    """None when the installed labconstrictor-tools is new enough and has the run-record helpers this plugin calls, else one sentence.
+
+    Two checks, because each alone can be wrong: the version (a Tools below TOOLS_MINIMUM, which includes v0.2.0-rc.1 and rc.2, both
+    `0.2.0rc1`) and the helpers themselves (Tools lists no `features` id for them, docs/PROTOCOL.md), which name the real need.
+    """
+    from labconstrictor_tools.compat import parse_version
+
+    version = _installed_version() if installed is None else installed
+    parsed, wanted = parse_version(version), parse_version(TOOLS_MINIMUM)
+    too_old = parsed is not None and wanted is not None and parsed < wanted
+    missing = [name for name in _RUN_HELPERS if not callable(getattr(runs_module, name, None))]
+    if not too_old and not missing:
+        return None
+    lacks = " and has no runs.%s" % ", runs.".join(missing) if missing else ""
+    return (
+        "napari-labconstrictor needs labconstrictor-tools %s or newer (the installed one is %s%s): update Tools to %s or newer "
+        "(version %s), e.g. pip install -U git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
+        % (TOOLS_MINIMUM, version or "of unknown version", lacks, TOOLS_MINIMUM_TAG, TOOLS_MINIMUM)
+    )
+
+
+def require_run_helpers(runs_module: Any = tools_runs) -> None:
+    """Refuse to load with a Tools that cannot write the run record: raises ImportError with the sentence of `tools_problem`."""
+    problem = tools_problem(runs_module)
+    if problem is not None:
+        raise ImportError(problem)
+
+
+require_run_helpers()
+
+
+def run_record(
+    app: str,
+    tool_id: str,
+    request: dict[str, Any],
+    task: Any,
+    seconds: float,
+    stderr: str,
+    snapshot: Any,
+    keep_inputs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """The content of `run.json` of one finished task: the one Tools writes for its own runs (`runs.build_record`), with the run
+    identity and start time of the snapshot. `keep_inputs` are reserved request inputs (`_calibration`) that must be under `inputs`
+    whatever Tools copies (SPEC_WRONG_SCIENCE 2.3.4: the host writes it too; a Tools with `calibration_per_axis` copies it as well).
+    """
+    content = tools_runs.build_record(
+        app,
+        tool_id,
+        request,
+        task,
+        seconds,
+        stderr,
+        run_id=snapshot.run_id if snapshot else None,
+        started_utc=snapshot.started if snapshot else None,
+    )
+    inputs = content.setdefault("inputs", {})
+    for key in keep_inputs:
+        if key in request and key not in inputs:
+            inputs[key] = request[key]
+    return content
 
 
 def slug(text: str) -> str:
