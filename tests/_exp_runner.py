@@ -1,9 +1,9 @@
-"""Throwaway experiment runner: runs one test script with the exit variant EXP_VARIANT (V0..V8).
+"""Throwaway experiment runner: runs one test script with the exit variant EXP_VARIANT (V0..V9).
 
 V0 control (current main: os._exit via _paths._leave)   V1 stop status checker + viewer.close, then os._exit
 V2 normal interpreter shutdown (py3.11)                  V3 V1 + V2     V4 ASV=true (napari never starts the status checker), os._exit
 V5 = V2 on Python 3.12                                   V6 reap Tools workers + reader threads (PR #62), os._exit
-V7 stop status checker only (no viewer.close), os._exit  V8 V6 + V7
+V7 stop status checker only (no viewer.close), os._exit  V8 V6 + V7     V9 viewer.close() only, then os._exit
 """
 
 import gc
@@ -113,6 +113,12 @@ def stop_napari() -> None:
         app.processEvents()
 
 
+def close_viewer_only() -> None:
+    import _harness
+
+    _harness.viewer.close()
+
+
 def normal(code: int | str | None) -> None:
     from qtpy.QtWidgets import QApplication
 
@@ -140,6 +146,8 @@ def make_exit():
         return lambda code=None: (stop_napari(), normal(code))
     if VARIANT == "V6":
         return lambda code=None: (reap_workers(), leave(code, "V6"))
+    if VARIANT == "V9":
+        return lambda code=None: (close_viewer_only(), leave(code, "V9"))
     if VARIANT == "V7":
         return lambda code=None: (stop_status(), leave(code, "V7"))
     if VARIANT == "V8":
