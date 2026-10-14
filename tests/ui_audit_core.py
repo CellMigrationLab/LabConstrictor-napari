@@ -51,8 +51,15 @@ def host_version() -> str:
     from importlib import metadata
 
     version = metadata.version("napari-labconstrictor")
-    root = Path(__file__).resolve().parent.parent
-    if (root / ".git").exists():
+    import importlib.util
+
+    spec = importlib.util.find_spec("napari_labconstrictor")
+    root = (
+        Path(spec.origin).resolve().parent.parent
+        if spec is not None and spec.origin
+        else Path("/nonexistent")
+    )
+    if (root / ".git").exists():  # the package is imported from a git checkout, not from site-packages
         sha = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
             capture_output=True,
