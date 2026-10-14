@@ -64,6 +64,72 @@ class Leave(unittest.TestCase):
         self.assertIn("leaves %s" % LEAVES_AT_ONCE, done.stdout)
 
 
+CLIENT_THREADS = (
+    "import threading\n"
+    "def client_threads():\n"
+    "    return [t.name for t in threading.enumerate() if t.name.endswith(('(_read_responses)', '(_read_stderr)'))]\n"
+)
+START_WORKER = (
+    "from labconstrictor_tools import client\n"
+    "worker = client.WorkerProcess('synthetic')\n"
+    "assert len(client_threads()) == 2, client_threads()\n"
+)  # one real worker (the registered example app): its two reader threads exist and block on its pipes
+
+
+class LeaveReapsWorkers(unittest.TestCase):
+    """A worker that is still alive at exit has two pipe-reader threads. `_leave` shuts it down first (`_paths._reap_workers`):
+    the Windows PySide6 access violation inside `os._exit` (CI run 38518804532) happened with exactly those threads blocked.
+    """
+
+    def test_a_worker_left_running_does_not_change_the_exit_code(self) -> None:
+        runs, passed = 15, 0
+        for _ in range(runs):
+            done = run(CLIENT_THREADS + START_WORKER + "sys.exit(0)")
+            passed += done.returncode == 0
+            self.assertEqual(done.returncode, 0, done.stderr)
+        print("worker left running at sys.exit: %d of %d runs exited 0" % (passed, runs))
+
+    def test_reaping_ends_the_worker_and_its_reader_threads(self) -> None:
+        done = run(
+            CLIENT_THREADS
+            + START_WORKER
+            + "_paths._reap_workers()\n"
+            + "print('threads left', client_threads(), 'worker alive', worker.proc.poll() is None, flush=True)\n"
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("threads left [] worker alive False", done.stdout)
+
+    def test_sabotage_without_the_helper_the_threads_stay(self) -> None:
+        done = run(
+            CLIENT_THREADS
+            + START_WORKER
+            + "_paths._reap_workers = lambda timeout=10.0: None\n"
+            + "_paths._reap_workers()\n"
+            + "print('threads left', len(client_threads()), flush=True)\n"
+            + "os_exit = __import__('os')._exit\n"
+            + "os_exit(0)\n"  # the worker dies with its input, as in the harness
+        )
+        self.assertIn(
+            "threads left 2", done.stdout, done.stderr
+        )  # the thread assertion above would fail here
+
+    def test_leave_reaps_before_the_final_exit(self) -> None:
+        done = run(
+            CLIENT_THREADS
+            + START_WORKER
+            + "import os\n"
+            + "real_exit = os._exit\n"
+            + "def at_exit(code):\n"
+            + "    print('at exit: threads', client_threads(), 'worker alive', worker.proc.poll() is None, flush=True)\n"
+            + "    real_exit(code)\n"
+            + "os._exit = at_exit\n"
+            + "sys.exit(0)\n"
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        if LEAVES_AT_ONCE:
+            self.assertIn("at exit: threads [] worker alive False", done.stdout)
+
+
 class LeaveWaitsForPrune(unittest.TestCase):
     """A `prune` subprocess of the widget is watched by a thread. The process must not end while that thread is inside CreateProcess
     (Windows: access violation after the verdict, CI run 38414096255) or while `prune` still runs: `_leave` and the normal exit wait for it.
