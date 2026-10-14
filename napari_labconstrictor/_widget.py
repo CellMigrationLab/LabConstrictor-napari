@@ -36,7 +36,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from . import _calibration, _lookups, _numbers, _retention, _snapshot
+from . import _calibration, _hosts, _lookups, _numbers, _retention, _snapshot
 from ._calibration import UNSET, USER, Derived, LinkState
 from ._export import ChannelError, channel_file, channel_layout, export_layer, selection_mask
 from ._export import is_set as _is_set
@@ -350,12 +350,16 @@ class LabConstrictorWidget(QWidget):
     def rescan(self, *_: Any) -> None:
         started = time.perf_counter()
         self.schemas, problems = registry.load_schemas()  # one broken app must not hide the others
-        self.apps = {name: entry for name, entry in registry.load_all().items() if name in self.schemas}
+        usable = {name: entry for name, entry in registry.load_all().items() if name in self.schemas}
+        self.apps, not_listed = _hosts.listed_entries(
+            usable
+        )  # the hosts rule: an app that excludes napari is not offered
         self.timings["discovery_ms"] = (time.perf_counter() - started) * 1000
         self.app_box.choices = sorted(self.apps) or ["(none registered)"]
         self._on_app_changed()
-        if problems:
-            self.status.setText("⚠ skipped: " + "; ".join("%s (%s)" % problem for problem in problems))
+        skipped = ["%s (%s)" % problem for problem in problems] + not_listed
+        if skipped:
+            self.status.setText("⚠ skipped: " + "; ".join(skipped))
 
     def _on_app_changed(self, *_: Any) -> None:
         schema = self.schemas.get(self.app_box.value)
