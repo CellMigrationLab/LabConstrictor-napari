@@ -258,8 +258,12 @@ def _advanced(ctx: AppCtx) -> list[str]:
         if not shown or any(a.visible for a in advanced):
             raise AssertionError("'Show advanced settings' does not show/hide the advanced parameters")
         notes.append("advanced box")
-    for group, button in getattr(w, "_group_heading", {}).items():
-        members = w._group_members[group]  # noqa: SLF001
+    # `_group_heading` keeps the headings of earlier forms (the widget does not clear it when a form is replaced): only a group of the
+    # form on screen counts
+    for group, members in w._group_members.items():  # noqa: SLF001
+        button = getattr(w, "_group_heading", {}).get(group)
+        if button is None or not button.native.isVisible():
+            continue  # a plain bold heading (not collapsible)
         before = all(m.visible for m in members)
         scroll_to(w, button.native)
         real_click(button.native)

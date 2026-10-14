@@ -19,6 +19,7 @@ from typing import Any
 
 from labconstrictor_tools import testing
 from ui_audit_core import (
+    MAIN_WINDOW,
     AppCtx,
     Human,
     RunObs,
@@ -29,8 +30,9 @@ from ui_audit_core import (
     scroll_to,
     shoot,
     until,
+    windows_problem,
 )
-from ui_audit_place import placement_problems
+from ui_audit_place import Frame, calibration_problems, fixture_scale, open_fixture_layer, placement_problems
 
 CANCEL_WAIT_S = 15.0  # how long a polite tool gets to stop after Cancel, and a killed worker to be reported
 NEVER_RUN = (
@@ -117,8 +119,10 @@ def tool_order(ctx: AppCtx) -> list[dict[str, Any]]:
     return sorted(ctx.schema["tools"], key=key)
 
 
-def fill_inputs(ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
-    """Set the form the way a person does (see the module doc); the resolved inputs."""
+def fill_inputs(
+    ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Frame]]:
+    """Set the form the way a person does (see the module doc); the resolved inputs and, per image parameter, the Frame it was given as."""
     w = ctx.host.widget
     inputs = testing._resolve_paths(
         case, tool
@@ -127,10 +131,21 @@ def fill_inputs(ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any]) -> dict
     unknown = sorted(set(inputs) - set(params))
     if unknown:
         raise AssertionError("the case sets %s, which the tool does not declare" % unknown)
+    frames: dict[str, Frame] = {}
     for name, value in inputs.items():
         kind = params[name]["type"]
         if kind in ("image", "labels"):
-            w.file_sources[name].value = Path(str(value))
+            path = Path(str(value))
+            layer = open_fixture_layer(ctx, name, path, kind) if ctx.cfg.input_mode == "layer" else None
+            if layer is not None:
+                w.file_sources[name].value = None
+                w.gui[name].value = layer
+                frames[name] = Frame(path, fixture_scale(path), "layer")
+            else:
+                w.file_sources[name].value = path
+                frames[name] = Frame(
+                    path, (1.0, 1.0), "file"
+                )  # SPEC_WRONG_SCIENCE 1.3: the pixel frame of the file
         elif kind in ("table", "file", "folder"):
             w.gui[name].value = Path(str(value))
         else:
@@ -145,11 +160,28 @@ def fill_inputs(ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any]) -> dict
                 w.gui[name].value = value
         pump(0.05)
     until(w.choices_settled, 20)
-    return inputs
+    return inputs, frames
 
 
-def prepare(ctx: AppCtx, tool_id: str, case: dict[str, Any]) -> dict[str, Any]:
-    """Choose the tool, empty the viewer of earlier results and fill the form with the case."""
+def reset_unset_inputs(ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any]) -> None:
+    """Every parameter the case does not give goes back to what a freshly opened form shows (the form is not rebuilt: the form of the
+    last run keeps its values): an optional value unset, a value with a default at its default, an image's file row empty.
+    """
+    w, given = ctx.host.widget, case.get("inputs", {})
+    for param in tool["inputs"]:
+        name = param["name"]
+        if name in given:
+            continue
+        if name in w.unset_toggles:
+            w.unset_toggles[name].value = False
+        elif param["type"] in ("image", "labels"):
+            w.file_sources[name].value = None
+        elif "default" in param and not param.get("pixel_size_of"):
+            w.gui[name].value = param["default"]
+
+
+def prepare(ctx: AppCtx, tool_id: str, case: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Frame]]:
+    """Choose the tool, empty the viewer of earlier results, reset what the case leaves out and fill the form with the case."""
     w = ctx.host.widget
     w.app_box.value = ctx.app
     pump(0.2)
@@ -157,6 +189,7 @@ def prepare(ctx: AppCtx, tool_id: str, case: dict[str, Any]) -> dict[str, Any]:
     pump(0.5)
     ctx.host.viewer.layers.clear()
     pump(0.2)
+    reset_unset_inputs(ctx, tool_of(ctx, tool_id), case)
     return fill_inputs(ctx, tool_of(ctx, tool_id), case)
 
 
@@ -301,7 +334,7 @@ def record_problems(ctx: AppCtx, tool_id: str) -> list[str]:
 
 
 def verify(
-    ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any], obs: RunObs, task: Any, inputs: dict[str, Any]
+    ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any], obs: RunObs, task: Any, frames: dict[str, Frame]
 ) -> str:
     """The assertions of one run; the detail of a pass."""
     w, expect = ctx.host.widget, case.get("expect", {})
@@ -325,15 +358,16 @@ def verify(
         problems.append("the status does not say cancelled: %s" % obs.status_text)
     elif wanted == "COMPLETE" and task.status == "COMPLETE":
         results = list(task.outputs["results"])
-        kinds = {p["name"]: p["type"] for p in tool["inputs"]}
         problems += obs.file_problems
         problems += shown_problems(ctx, tool, results)
-        problems += placement_problems(ctx, tool, inputs, kinds)
+        problems += placement_problems(ctx, tool, frames)
         if obs.status_text.startswith("⚠"):
             problems.append("the run ended with a warning: %s" % obs.status_text)
     if not obs.enabled_after:
         problems.append("Run is still disabled after the run")
     problems += record_problems(ctx, tool["id"])
+    windows = windows_problem([MAIN_WINDOW])  # a finished run leaves no dialog behind
+    problems += [windows] if windows else []
     if problems:
         raise AssertionError("; ".join(problems))
     return "%s in %.1fs, %d progress updates, outputs: %s" % (
@@ -348,20 +382,25 @@ def shot_paths(ctx: AppCtx, tool_id: str) -> tuple[Path, Path]:
 
 
 def replay_prerequisites(ctx: AppCtx, index: int, deadline: float) -> list[str]:
-    """Run the earlier COMPLETE cases that have not run yet (a stateful app's game in file order); each must complete."""
+    """Replay the earlier cases that have not run yet, in file order, through the same form and Run button (a stateful app's game: the
+    state is in the results folder, and a case that expects FAILED can still change it, as the app's own `labconstrictor-tools test` run
+    sees). Each must end as its own `expect` says (status, and error code); stress, cancel and skipped cases are not replayed.
+    """
     done = []
     for j, case in enumerate(ctx.cases[:index]):
-        if j in ctx.replayed or never_run(case["tool"]) or not completes(case):
+        if j in ctx.replayed or never_run(case["tool"]) or "cancel_after_s" in case or case.get("skip"):
             continue
         ctx.replayed.add(j)
         prepare(ctx, case["tool"], case)
         obs, task = execute(ctx, case["tool"], case, deadline)
-        if task.status != "COMPLETE":
+        expect = case.get("expect", {})
+        wanted = expect.get("status", "COMPLETE")
+        if task.status != wanted or ("code" in expect and task.code != expect["code"]):
             raise AssertionError(
-                "prerequisite case %d (%s) did not complete: %s | %s"
-                % (j, case["tool"], task.status, obs.status_text)
+                "prerequisite case %d (%s) ended %s %s, its expect says %s %s | %s"
+                % (j, case["tool"], task.status, task.code, wanted, expect.get("code", ""), obs.status_text)
             )
-        done.append(case["tool"])
+        done.append(case["tool"] + ("" if wanted == "COMPLETE" else "(%s)" % wanted))
     return done
 
 
@@ -372,7 +411,8 @@ def run_tool(ctx: AppCtx, tool_id: str, deadline: float, outcome: dict[str, Any]
     index, case = choose_case(ctx, tool_id)
     replayed = replay_prerequisites(ctx, index, deadline)
     ctx.replayed.add(index)
-    inputs = prepare(ctx, tool_id, case)
+    inputs, frames = prepare(ctx, tool_id, case)
+    calibration = calibration_problems(ctx, tool, inputs, frames)
     for path in (form_png, after_png):
         path.unlink(missing_ok=True)
     outcome["since"] = time.time()
@@ -386,7 +426,9 @@ def run_tool(ctx: AppCtx, tool_id: str, deadline: float, outcome: dict[str, Any]
         except Exception as error:  # noqa: BLE001
             outcome["after"] = "%s: %s" % (type(error).__name__, error)
     obs.case_index = index
-    detail = verify(ctx, tool, case, obs, task, inputs)
+    detail = verify(ctx, tool, case, obs, task, frames)
+    if calibration:
+        raise AssertionError("; ".join(calibration) + " | " + detail)
     return detail + (" (prerequisites replayed: %s)" % ", ".join(replayed) if replayed else "")
 
 

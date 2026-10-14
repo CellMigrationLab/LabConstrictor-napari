@@ -19,6 +19,7 @@ from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QWidget
 
 HOST = "napari"
+FAMILY = "ui"
 DEFAULT_TOOL_TIMEOUT_S = 300.0
 DETAIL_MAX = 500
 
@@ -52,6 +53,9 @@ class Config:
     shots: Path  # LC_SHOTS
     expect: str  # LC_EXPECT_NAPARI: "listed" | "not_listed"
     timeout: float  # LC_UI_TOOL_TIMEOUT: seconds one tool (form and run) may take
+    input_mode: str = (
+        "layer"  # LC_UI_INPUT: "layer" (a 2D TIFF fixture is opened as a layer) | "file" (always the 'or file' row)
+    )
 
 
 def config_from_env(env: Mapping[str, str]) -> Config:
@@ -68,6 +72,9 @@ def config_from_env(env: Mapping[str, str]) -> Config:
         raise AuditConfigError(
             "LC_APP_TESTS needs one lc_tests folder per app (%d apps, %d folders)" % (len(apps), len(folders))
         )
+    mode = env.get("LC_UI_INPUT", "layer")
+    if mode not in ("layer", "file"):
+        raise AuditConfigError("LC_UI_INPUT must be 'layer' or 'file', got %r" % mode)
     return Config(
         home=Path(env["LC_HOME"]),
         apps=apps,
@@ -75,6 +82,7 @@ def config_from_env(env: Mapping[str, str]) -> Config:
         shots=Path(env.get("LC_SHOTS", "./screens")),
         expect=expect,
         timeout=float(env.get("LC_UI_TOOL_TIMEOUT", DEFAULT_TOOL_TIMEOUT_S)),
+        input_mode=mode,
     )
 
 
@@ -97,34 +105,35 @@ class Recorder:
     """The checks of one app: prints `CHECK` / `NOTE` lines and rewrites the matrix file (atomically) after every single one.
 
     Statuses: PASS, FAIL, NOT_RUN (expected, not executed: red) and HUMAN (cannot be automated, listed for a person, never green).
-    The matrix id puts the app after `ui_napari_` so that rows of different apps never collide; the printed id is the contract's.
+    A row's `id` is the printed id (the contract's); the app is a field of the row and of the file, one matrix file per app.
     """
 
     def __init__(self, app: str, shots: Path, shared: list[dict[str, Any]] | None = None) -> None:
-        self.app, self.path = app, shots / ("matrix_%s_%s.json" % (HOST, app))
+        self.app, self.path = app, shots / ("matrix_ui_%s_%s.json" % (HOST, app))
         self.expected_path = shots / ("expected_%s_%s.json" % (HOST, app))
         self.started, self.finished = now(), None
         self.rows: list[dict[str, Any]] = list(shared or [])
         self.red: list[str] = []  # ids that failed or were never run
-        self.expected: dict[str, str] = {}  # matrix id -> printed id
+        self.expected: list[str] = []  # every id this audit intends to produce
         shots.mkdir(parents=True, exist_ok=True)
         self._write()
 
-    def matrix_id(self, cid: str) -> str:
-        return "ui_napari_%s_%s" % (sanitise(self.app), cid.removeprefix("ui_napari_"))
-
     def declare(self, ids: list[str]) -> None:
         """Write the list of every id this audit intends to produce: one without a row at the end is NOT_RUN (red)."""
-        self.expected.update({self.matrix_id(i): i for i in ids})
-        doc = {"host": HOST, "app": self.app, "ids": list(self.expected)}
-        self.expected_path.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+        self.expected += [i for i in ids if i not in self.expected]
+        tmp = self.expected_path.with_name(self.expected_path.name + ".tmp")
+        tmp.write_text(json.dumps(self.expected, indent=1), encoding="utf-8")
+        os.replace(tmp, self.expected_path)
+        self._write()
 
     def _write(self) -> None:
         doc = {
             "host": HOST,
             "app": self.app,
+            "family": FAMILY,
             "started": self.started,
             "finished": self.finished,
+            "expected": len(self.expected),
             "rows": self.rows,
         }
         tmp = self.path.with_name(self.path.name + ".tmp")
@@ -144,8 +153,8 @@ class Recorder:
             self.red.append(cid)
         self.rows.append(
             {
-                "id": self.matrix_id(cid), "check": cid, "app": self.app, "host": HOST, "tool": tool, "control": control,
-                "status": status, "detail": text, "seconds": round(seconds, 2), "screenshot": screenshot,
+                "id": cid, "family": FAMILY, "host": HOST, "app": self.app, "tool": tool, "control": control,
+                "status": status, "detail": text, "seconds": round(seconds, 2), "screenshot": screenshot, "ts": now(),
             }
         )  # fmt: skip
         self._write()
@@ -179,8 +188,8 @@ class Recorder:
     def finish(self) -> None:
         """Every declared id that has no row is NOT_RUN: it was expected and never executed."""
         done = {r["id"] for r in self.rows}
-        for mid, cid in self.expected.items():
-            if mid not in done:
+        for cid in self.expected:
+            if cid not in done:
                 self.add(cid, "NOT_RUN", "declared in the expected file, never executed")
         self.finished = now()
         self._write()

@@ -21,14 +21,18 @@ installed app (a scratch `LC_HOME`), under a display (`xvfb-run -a` on Linux):
 | `LC_APP_TESTS` | the app's `lc_tests` folder (`cases.json`, `fixtures/`, optional `no_case.json`); with `LC_APPS` a comma list, one folder per app, same order |
 | `LC_EXPECT_NAPARI` | `listed` or `not_listed` (required, never defaulted). `not_listed`: assert the app is absent from the app chooser, print that one check and a NOTE, nothing else |
 | `LC_SHOTS` | output folder (default `./screens`): screenshots and the matrix |
+| `LC_UI_INPUT` | `layer` (default): a 2D TIFF fixture named by a case is opened as an image/labels layer whose scale is computed from the file's own tags; `file`: always the chooser's 'or file' row (results are then in the pixel frame of the file, identity, SPEC_WRONG_SCIENCE 1.3). Stacks and non-TIFF files always use the file row |
+| `LC_UI_IDLE_S` | watchdog: seconds the audit may go without writing a row before its process is killed and the matrix closed with `ui_napari_driver_crashed` (default `3 x LC_UI_TOOL_TIMEOUT + 180`) |
 | `LC_UI_TOOL_TIMEOUT` | seconds one tool (its form checks and its run) may take, default 300. On a timeout the check fails, the run is cancelled, the worker is killed if it ignores Cancel and restarted with the widget's own **Restart worker**, and the audit goes on |
 
 Output: one line per assertion, `CHECK <id> PASS|FAIL <detail>` (detail on one line, at most 500 characters), and
 `NOTE <id> not run: <reason>` for what was not executed. Exit code 1 if any check is red (FAIL or NOT_RUN), 0 otherwise. The audit
 **never stops at the first failure**: each assertion runs in its own guard, an exception (also one raised inside a Qt slot, and any modal
 dialog nobody asked for, which a timer inside the Qt loop records and closes) becomes `FAIL <ExceptionType: message>`. A modal dialog can
-therefore never block the run for good, which is why the audit runs in one process. Only a crash of the host itself ends the run, with
-`CHECK ui_napari_driver_crashed FAIL ...`; a hard crash of the process leaves the matrix written so far.
+therefore never block the run for good. The audit itself runs in a CHILD process under a watchdog (`ui_audit_watch.py`): if the Qt thread
+freezes (no row written for `LC_UI_IDLE_S` seconds) or the process dies (a segfault), the parent kills it, writes
+`CHECK ui_napari_driver_crashed FAIL <reason>`, turns every expected id without a row into `NOT_RUN` and closes the matrix (exit code 2).
+`python tests/ui_audit.py --child` runs the audit in the current process without the watchdog.
 
 Use a screen big enough for the window (the audit resizes Napari to fit the screen and fails a button that is outside it):
 `xvfb-run -a -s "-screen 0 1600x1000x24" python tests/ui_audit.py`.
@@ -44,16 +48,17 @@ Use a screen big enough for the window (the audit resizes Napari to fit the scre
 
 ### The matrix and the expected file
 
-Before anything runs, `<LC_SHOTS>/expected_napari_<app>.json` lists every id the audit intends to produce (`{"host","app","ids":[...]}`: every
-table control, every tool x opens, controls, run, screens). `<LC_SHOTS>/matrix_napari_<app>.json` is rewritten atomically (temp file, then
-`os.replace`) after every single check:
+Before anything runs, `<LC_SHOTS>/expected_napari_<app>.json` (a JSON list) holds every id the audit intends to produce (every table
+control, every tool x opens, controls, run, screens, and with `LC_APPS` the multi ids). `<LC_SHOTS>/matrix_ui_napari_<app>.json` is
+rewritten atomically (temp file, then `os.replace`) after every single row (the schema of `tests/oneoff_2026-10/matrix.py` of the Tools repo):
 
-    {"host": "napari", "app": "...", "started": "...Z", "finished": null | "...Z",
-     "rows": [{"id", "check", "app", "host", "tool", "control", "status": "PASS|FAIL|NOT_RUN|HUMAN", "detail", "seconds", "screenshot": path | null}]}
+    {"host": "napari", "app": "...", "family": "ui", "started": "...Z", "finished": null | "...Z", "expected": <count of ids>,
+     "rows": [{"id", "family", "host", "app", "tool", "control", "status": "PASS|FAIL|NOT_RUN|HUMAN", "detail", "seconds",
+               "screenshot": path | null, "ts"}]}
 
-`id` carries the app (`ui_napari_<app>_run_<tool>`) so rows never collide across apps; `check` is the printed id. At the end every
-expected id without a row gets a `NOT_RUN` row. `finished` is `null` until the audit ends, so a killed run is recognisable. The matrix
-holds text only; screenshots stay on disk. With `LC_APPS` the multi-app rows are in every matrix.
+`id` is the printed check id. At the end every expected id without a row gets a `NOT_RUN` row. `finished` is `null` until the audit ends,
+so a killed run is recognisable. The matrix holds text only; screenshots stay on disk. With `LC_APPS` the multi-app rows are in every
+matrix after the first app's.
 
 ### What is clicked, and where the expectations come from
 
@@ -67,9 +72,15 @@ holds text only; screenshots stay on disk. With `LC_APPS` the multi-app rows are
   0, same pixel grid, points and outlines inside the image).
 * Cases: the first case of the tool that expects COMPLETE (no failure, crash, cancel or skip case, no tool named `stress_*`, never
   `stress_real_memory`). Earlier COMPLETE cases of the file are replayed first, once, in file order (a game such as GuessTheCondition:
-  `prepare_game` before `play_round`); tools are audited in the order of their cases. An `image`/`labels` input given as a file name goes
-  into the chooser's "or file" row (no layer is made), so its calibration source is the TIFF's tags. Cases run on a scratch COPY of
-  `lc_tests`.
+  `prepare_game` before `play_round`); tools are audited in the order of their cases. How a case's file becomes a host input
+  (`LC_UI_INPUT`): `layer` (default): a 2D TIFF given for an `image`/`labels` parameter is opened as a layer whose scale the audit computes
+  from the TIFF's own tags (ImageJ unit + XResolution, or ResolutionUnit; 72/96 dpi defaults are not a calibration), so the calibration
+  source is that layer, and every result that belongs to the image must come back with that scale, translate 0 and the image's pixel grid;
+  a pixel-size field the case leaves empty must show the file's micrometres per pixel. `file`: the file goes into the chooser's "or file"
+  row; results must be in the pixel frame of the file (identity). Folders, files and tables go into their pickers; stacks and non-TIFF
+  files use the file row in both modes. Cases run on a scratch COPY of `lc_tests`; a stateful app needs FRESH fixtures in that copy
+  (GuessTheCondition: run `make_fixtures.py` into it; leftovers of an earlier game make `create_demo_experiment` fail with
+  `already_exists`, which is reported, not worked around).
 
 ### Screenshots
 

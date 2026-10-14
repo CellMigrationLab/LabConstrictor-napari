@@ -249,7 +249,8 @@ def effect_details(ctx: AppCtx) -> str:
     def inspect(dialog: Any) -> tuple[str, str]:
         return dialog.windowTitle(), dialog.detailedText()
 
-    title, detail = press_with_modal(lambda: real_click(w.details_button), inspect, ["QMessageBox"])  # type: ignore[misc]
+    shown: tuple[str, str] = press_with_modal(lambda: real_click(w.details_button), inspect, ["QMessageBox"])  # type: ignore[assignment]
+    title, detail = shown
     named = {
         k: v
         for k, _, v in (line.partition(": ") for line in detail.splitlines())
