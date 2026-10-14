@@ -7,9 +7,8 @@ on:
     - cron: "23 3 * * *"   # nightly, so main is re-checked against new napari/Qt releases
   workflow_dispatch:
 env:
-  # TEMPORARY (switch back to "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" before this PR merges): the Tools PR #133
-  # (app_hosts_v1) is not on main yet, so CI installs Tools from its branch. This is the only place that names it.
-  LC_TOOLS_SPEC: "git+https://github.com/CellMigrationLab/LabConstrictor-Tools@claude/app-hosts-discovery"
+  # where CI installs LabConstrictor-Tools from (the one place)
+  LC_TOOLS_SPEC: "git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}   # never cancel a run on main
