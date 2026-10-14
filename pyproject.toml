@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "napari-labconstrictor"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "Run installed LabConstrictor apps from napari (one generic widget, forms generated from each tool's schema)"
 readme = "README.md"
 license = { text = "MIT" }
