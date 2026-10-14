@@ -1,9 +1,17 @@
-"""Throwaway experiment runner: runs one test script with the exit variant EXP_VARIANT (V0..V5)."""
+"""Throwaway experiment runner: runs one test script with the exit variant EXP_VARIANT (V0..V8).
 
+V0 control (current main: os._exit via _paths._leave)   V1 stop status checker + viewer.close, then os._exit
+V2 normal interpreter shutdown (py3.11)                  V3 V1 + V2     V4 ASV=true (napari never starts the status checker), os._exit
+V5 = V2 on Python 3.12                                   V6 reap Tools workers + reader threads (PR #62), os._exit
+V7 stop status checker only (no viewer.close), os._exit  V8 V6 + V7
+"""
+
+import gc
 import os
 import runpy
 import sys
 import threading
+import time
 
 VARIANT = os.environ.get("EXP_VARIANT", "V0")
 if VARIANT == "V4":
@@ -47,8 +55,6 @@ def native_threads() -> int:
 def report(tag: str) -> None:
     qt = []
     try:
-        import gc
-
         from qtpy.QtCore import QThread
 
         qt = [
@@ -63,18 +69,45 @@ def report(tag: str) -> None:
     )
 
 
+def stop_status() -> None:
+    import _harness
+
+    st = _harness.viewer.window._qt_window.status_thread
+    st.close_terminate()
+    st.wait(5000)
+
+
+def reap_workers(timeout: float = 10.0) -> None:  # copy of PR #62's _paths._reap_workers
+    deadline = time.monotonic() + timeout
+    workers_module = sys.modules.get("napari_labconstrictor._workers")
+    client_module = sys.modules.get("labconstrictor_tools.client")
+    if client_module is None:
+        return
+    objects = gc.get_objects()
+    if workers_module is not None:
+        for cache in [o for o in objects if isinstance(o, workers_module.WorkerCache)]:
+            cache.shutdown(final=True)
+    for worker in [o for o in objects if isinstance(o, client_module.WorkerProcess)]:
+        proc = getattr(worker, "proc", None)
+        if proc is not None and proc.poll() is None:
+            worker.close(timeout=max(1.0, deadline - time.monotonic()))
+    del objects
+    for thread in threading.enumerate():
+        if thread.name.endswith(("(_read_responses)", "(_read_stderr)")):
+            thread.join(max(0.1, deadline - time.monotonic()))
+            if thread.is_alive():
+                print("worker reader thread did not end: %s" % thread.name, flush=True)
+
+
 def stop_napari() -> None:
     import _harness
     from qtpy.QtWidgets import QApplication
 
-    v = _harness.viewer
-    qw = v.window._qt_window
     try:
-        qw.status_thread.close_terminate()
-        qw.status_thread.wait(5000)
+        stop_status()
     except Exception as e:  # noqa: BLE001
         print("status stop failed", e, flush=True)
-    v.close()
+    _harness.viewer.close()
     app = QApplication.instance()
     for _ in range(5):
         app.processEvents()
@@ -91,15 +124,26 @@ def normal(code: int | str | None) -> None:
     _real_exit(code)
 
 
+def leave(code: int | str | None, tag: str) -> None:
+    report(tag)
+    _paths_exit(code)
+
+
 def make_exit():
     if VARIANT in ("V0", "V4"):
-        return lambda code=None: (report("pre"), _paths_exit(code))
+        return lambda code=None: leave(code, "pre")
     if VARIANT == "V1":
-        return lambda code=None: (stop_napari(), report("V1"), _paths_exit(code))
+        return lambda code=None: (stop_napari(), leave(code, "V1"))
     if VARIANT in ("V2", "V5"):
         return normal
     if VARIANT == "V3":
         return lambda code=None: (stop_napari(), normal(code))
+    if VARIANT == "V6":
+        return lambda code=None: (reap_workers(), leave(code, "V6"))
+    if VARIANT == "V7":
+        return lambda code=None: (stop_status(), leave(code, "V7"))
+    if VARIANT == "V8":
+        return lambda code=None: (reap_workers(), stop_status(), leave(code, "V8"))
     raise SystemExit("unknown variant " + VARIANT)
 
 

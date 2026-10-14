@@ -52,20 +52,4 @@ jobs:
       - name: Loop
         shell: bash
         working-directory: tests
-        run: |
-          N=${{ needs.cfg.outputs.runs }}
-          fatals=0; nonzero=0; noverdict=0
-          for i in $(seq 1 $N); do
-            timeout 900 python _exp_runner.py test_calibration_transitions.py > run.log 2>&1; rc=$?
-            fatal=$(grep -c "Windows fatal exception" run.log || true)
-            ok=$(grep -c "FAILURES: none" run.log || true)
-            echo "run $i rc=$rc fatal=$fatal verdict_none=$ok $(grep EXITREPORT run.log | tr '\n' ' ')"
-            [ "$rc" != 0 ] && nonzero=$((nonzero+1))
-            [ "$fatal" != 0 ] && fatals=$((fatals+1))
-            [ "$ok" = 0 ] && noverdict=$((noverdict+1))
-            if [ "$rc" != 0 ] || [ "$fatal" != 0 ]; then
-              echo "::group::log of run $i (rc=$rc)"; tail -80 run.log; echo "::endgroup::"
-            fi
-          done
-          msg="SUMMARY variant=$EXP_VARIANT runs=$N nonzero_exit=$nonzero fatal_exception_lines_runs=$fatals no_verdict=$noverdict"
-          echo "$msg"; echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+        run: python -u _exp_loop.py ${{ needs.cfg.outputs.runs }} test_calibration_transitions.py
