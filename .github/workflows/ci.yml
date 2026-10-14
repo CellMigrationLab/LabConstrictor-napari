@@ -6,6 +6,10 @@ on:
   schedule:
     - cron: "23 3 * * *"   # nightly, so main is re-checked against new napari/Qt releases
   workflow_dispatch:
+env:
+  # TEMPORARY (switch back to "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" before this PR merges): the Tools PR #133
+  # (app_hosts_v1) is not on main yet, so CI installs Tools from its branch. This is the only place that names it.
+  LC_TOOLS_SPEC: "git+https://github.com/CellMigrationLab/LabConstrictor-Tools@claude/app-hosts-discovery"
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}   # never cancel a run on main
@@ -33,7 +37,7 @@ jobs:
       - name: Private virtualenv
         # the runner's own Python folder and binary are world-writable, which the tools registry refuses by design: use a private copy, not a symlink
         run: python -m venv --copies "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-${{ matrix.qt }}]"
+      - run: pip install "${{ env.LC_TOOLS_SPEC }}" -e ".[test-${{ matrix.qt }}]"
       - run: pip list | grep -i -E "^(napari|PyQt|PySide|QtPy|shiboken|magicgui) "
       - name: Tests
         working-directory: tests
@@ -59,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "${{ matrix.python }}", cache: pip, cache-dependency-path: pyproject.toml }
-      - run: pip install "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e ".[test-${{ matrix.qt }}]"
+      - run: pip install "${{ env.LC_TOOLS_SPEC }}" -e ".[test-${{ matrix.qt }}]"
       - run: pip list | grep -i -E "^(napari|PyQt|PySide|QtPy|shiboken|magicgui) "
         shell: bash
       - name: Mesa llvmpipe software OpenGL (Windows)
@@ -113,5 +117,5 @@ jobs:
       # The pins are the versions the code was checked against: raise them together
       - run: >
           pip install mypy==1.20.2 "napari[pyqt6]==0.9.2" magicgui==0.10.2 qtpy==2.4.3
-          "git+https://github.com/CellMigrationLab/LabConstrictor-Tools" -e .
+          "${{ env.LC_TOOLS_SPEC }}" -e .
       - run: mypy   # the package, the tests and the scripts (paths and settings: [tool.mypy] in pyproject.toml)

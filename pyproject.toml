@@ -80,7 +80,7 @@ no_implicit_optional = true
 # (func-returns-value), and results of the tools read as plain dicts (index, operator, type-var).
 module = [
     "_async", "_calhelpers", "_channelhelpers", "_harness", "_linkedhelpers", "_numhelpers", "_paths", "_runtools",
-    "lctest_async", "lctest_numbers", "lctest_runapp", "test_adversarial_hints", "test_async_bounded",
+    "lctest_async", "lctest_numbers", "lctest_runapp", "test_adversarial_hints", "test_app_hosts", "test_app_hosts_widget", "test_async_bounded",
     "test_async_cache", "test_async_cancel", "test_async_close", "test_async_conformance", "test_async_run",
     "test_async_stale", "test_calibration", "test_calibration_text", "test_calibration_transitions",
     "test_channel_memory", "test_channels", "test_channels_hyperstack", "test_channels_rgb", "test_coordinate_frame",
