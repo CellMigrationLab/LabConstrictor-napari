@@ -43,6 +43,27 @@ def _prunes_have_ended() -> bool:
     return retention is None or retention.wait_idle(120)
 
 
+def _close_viewer() -> None:
+    """Close every napari viewer of this process (the `_harness` one and the ones a script makes itself), then process events.
+
+    Why: `os._exit` is `ExitProcess` on Windows. With a viewer still open it printed, in 60 of 60 runs of test_calibration_transitions.py
+    (windows-latest, Python 3.11, PySide6), a first-chance access violation (faulthandler) and in 6 of 60 a second, fatal one (exit
+    0xC0000005 after "FAILURES: none"; first seen in CI run 38518804532). With the viewer closed first (`viewer.close()`, then
+    `processEvents()`) there were 0 of 90 crashes and no fatal line. Stopping napari's status checker alone, or stopping the Tools
+    workers and their reader threads, did not remove the fatal line. Why closing helps is not known; that it does is measured.
+    napari keeps its viewers in `Viewer._instances`; `close_all` is `viewer.close()` on each. napari not imported: nothing to close.
+    """
+    viewer_module = sys.modules.get("napari.viewer")
+    if viewer_module is None:
+        return
+    from qtpy.QtWidgets import QApplication
+
+    viewer_module.Viewer.close_all()
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+
+
 def _leave(code: int | str | None = None) -> None:
     """`sys.exit` for a test script: the verdict is already printed and decides the exit code, so leave at once (`os._exit`).
 
@@ -66,6 +87,7 @@ def _leave(code: int | str | None = None) -> None:
     elif not isinstance(code, int):
         print(code, file=sys.stderr)
         code = 1
+    _close_viewer()  # before the prune wait: closing the widget can end a run and start a prune
     if not _prunes_have_ended():
         print("a `prune` subprocess of the widget is still running at exit", file=sys.stderr)
         code = code or 1
