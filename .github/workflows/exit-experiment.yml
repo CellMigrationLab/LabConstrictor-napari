@@ -1,0 +1,64 @@
+name: exit-experiment
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: runs per variant
+        default: "40"
+      variants:
+        description: JSON list of variants to run
+        default: '["V0","V1","V2","V3","V4","V5"]'
+env:
+  LC_TOOLS_SPEC: "git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
+jobs:
+  exp:
+    name: ${{ matrix.variant }}
+    runs-on: windows-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(inputs.variants) }}
+    env:
+      LC_EXPECT_QT: PySide6
+      EXP_VARIANT: ${{ matrix.variant }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.variant == 'V5' && '3.12' || '3.11' }}", cache: pip, cache-dependency-path: pyproject.toml }
+      - run: pip install "${{ env.LC_TOOLS_SPEC }}" -e ".[test-pyside6]"
+      - run: pip list | grep -i -E "^(napari|PyQt|PySide|QtPy|shiboken|magicgui) "
+        shell: bash
+      - name: Mesa llvmpipe software OpenGL (Windows)
+        shell: bash
+        env:
+          MESA_VERSION: "24.2.7"
+          MESA_SHA256: adbb439c1bf833a1e24a735a6dea3c3ceaf8459dfddd811a12f5aa5c832ad3fe
+        run: |
+          curl -fsSL -o mesa.7z "https://github.com/pal1000/mesa-dist-win/releases/download/${MESA_VERSION}/mesa3d-${MESA_VERSION}-release-msvc.7z"
+          echo "${MESA_SHA256}  mesa.7z" | sha256sum -c -
+          7z x mesa.7z -omesa -y > /dev/null
+          PYDIR="$(dirname "$(python -c 'import sys; print(sys.executable)')")"
+          cp mesa/x64/opengl32.dll mesa/x64/libgallium_wgl.dll mesa/x64/libglapi.dll "$PYDIR"/
+          echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
+          echo "QT_OPENGL=desktop" >> "$GITHUB_ENV"
+      - name: Loop
+        shell: bash
+        working-directory: tests
+        run: |
+          N=${{ inputs.runs }}
+          crashes=0; fatals=0; nonzero=0; noverdict=0
+          for i in $(seq 1 $N); do
+            timeout 900 python _exp_runner.py test_calibration_transitions.py > run.log 2>&1; rc=$?
+            fatal=$(grep -c "Windows fatal exception" run.log || true)
+            ok=$(grep -c "FAILURES: none" run.log || true)
+            echo "run $i rc=$rc fatal=$fatal verdict_none=$ok $(grep EXITREPORT run.log | tr '\n' ' ')"
+            [ "$rc" != 0 ] && nonzero=$((nonzero+1))
+            [ "$fatal" != 0 ] && fatals=$((fatals+1))
+            [ "$ok" = 0 ] && noverdict=$((noverdict+1))
+            if [ "$rc" != 0 ] || [ "$fatal" != 0 ]; then
+              echo "::group::log of run $i (rc=$rc)"; tail -80 run.log; echo "::endgroup::"
+            fi
+          done
+          msg="SUMMARY variant=$EXP_VARIANT runs=$N nonzero_exit=$nonzero fatal_exception_lines_runs=$fatals no_verdict=$noverdict"
+          echo "$msg"; echo "$msg" >> "$GITHUB_STEP_SUMMARY"
