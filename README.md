@@ -76,10 +76,10 @@ In the Python environment you start napari from (**Python 3.11 or newer**; napar
 ```bash
 python -m pip install "napari[pyqt6]" \
   https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.1.zip \
-  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/<TAG>.zip
+  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/<NAPARI_TAG>.zip
 ```
 
-- `<TAG>` is a placeholder: use the **latest release tag** of this repository (see its Releases and Tags pages). This repository has no tag or release workflow yet (not verified at the time of writing), so until the first tag exists this line cannot be run as written.
+- `<NAPARI_TAG>` is a placeholder: use the **latest release tag** of this repository (see its Releases and Tags pages). This repository has no tag and no release yet (checked 14 Oct 2026), and its only workflow is `ci.yml`, so until the first tag exists this line cannot be run as written.
 - **Qt6 only:** use `napari[pyqt6]` (or `napari[pyside6]`). PyQt5 is not tested here, so avoid `napari[pyqt5]`; napari deprecated it in 0.8.0. The plugin installs no Qt backend of its own: it uses `qtpy` and runs on the one your napari has.
 - **Tools 0.3.0a1 or newer** (tag `v0.3.0-alpha.1`, version `0.3.0a1`) is required in napari's environment: the plugin depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one. The apps you want to run also need Tools 0.3.0a1 or newer to work in Fiji and QuPath (Fiji and QuPath leave out an older app; this plugin only skips the cleanup step for it, and its other behaviour with such an app is not verified). An app released with the older pin `v0.2.0-rc.1` therefore needs a new release first.
 - The tag of Tools, `v0.3.0-alpha.1`, had not been created when this was written (14 Oct 2026); until it exists that address does not resolve.
@@ -127,7 +127,7 @@ For more detail, see [napari inputs and results](docs/USING_NAPARI.md).
 
 The widget reads registered LabConstrictor tool manifests. You do not need a new napari plugin for every scientific application; its declared tools appear in the same widget.
 
-Try [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground) for a test image, [Guess the Condition](https://github.com/CellMigrationLab/GuessTheCondition) for blinded image classification, [NucleiSky](https://github.com/CellMigrationLab/NucleiSky) or [VLab4Mic](https://github.com/CellMigrationLab/LabConstrictor-VLab4Mic) for microscopy simulations. These four are the apps meant to be listed in napari. [CellTracksColab](https://github.com/CellMigrationLab/CellTracksColab) is a notebook app that no host lists. See the [Tools repository](https://github.com/CellMigrationLab/LabConstrictor-Tools) for installation links.
+Try [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground) for a test image, [Guess the Condition](https://github.com/CellMigrationLab/GuessTheCondition) for blinded image classification, [NucleiSky](https://github.com/CellMigrationLab/NucleiSky) for image registration and ROI matching using nuclei constellations, or [VLab4Mic](https://github.com/CellMigrationLab/LabConstrictor-VLab4Mic) for microscopy simulations. These four are the apps meant to be listed in napari. [CellTracksColab](https://github.com/CellMigrationLab/CellTracksColab) is a notebook app that no host lists. See the [Tools repository](https://github.com/CellMigrationLab/LabConstrictor-Tools) for installation links.
 
 Which host lists which app: apps declare the hosts that list them (`hosts:` in their `labconstrictor-app.yaml`); the rule that makes the hosts follow this declaration is being added in Tools 0.3.0a1. Until it is released, do not rely on it (napari lists every registered app that has a schema).
 
