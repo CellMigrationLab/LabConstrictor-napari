@@ -54,6 +54,7 @@ def close_after_crash(shots: Path, reason: str, apps: list[str]) -> int:
             )  # fmt: skip
             added += 1
         doc["finished"], doc["expected"] = stamp, len(expected)
+        doc.setdefault("host_version", "unknown (the audit crashed before it reported it)")
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
         os.replace(tmp, path)

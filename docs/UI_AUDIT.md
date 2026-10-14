@@ -52,11 +52,11 @@ Before anything runs, `<LC_SHOTS>/expected_napari_<app>.json` (a JSON list) hold
 control, every tool x opens, controls, run, screens, and with `LC_APPS` the multi ids). `<LC_SHOTS>/matrix_ui_napari_<app>.json` is
 rewritten atomically (temp file, then `os.replace`) after every single row (the schema of `tests/oneoff_2026-10/matrix.py` of the Tools repo):
 
-    {"host": "napari", "app": "...", "family": "ui", "started": "...Z", "finished": null | "...Z", "expected": <count of ids>,
+    {"host": "napari", "app": "...", "family": "ui", "host_version": "0.1.0a1" | "0.1.0a1+git.<sha> (editable checkout)", "started": "...Z", "finished": null | "...Z", "expected": <count of ids>,
      "rows": [{"id", "family", "host", "app", "tool", "control", "status": "PASS|FAIL|NOT_RUN|HUMAN", "detail", "seconds",
                "screenshot": path | null, "ts"}]}
 
-`id` is the printed check id. At the end every expected id without a row gets a `NOT_RUN` row. `finished` is `null` until the audit ends,
+`host_version` says which Napari host the matrix describes (a tag install gives the plain version; an editable checkout adds the commit); it is also printed as `NOTE ui_napari_host_version`. Results on a real app are to be taken against the released tag installed non-editable. `id` is the printed check id. At the end every expected id without a row gets a `NOT_RUN` row. `finished` is `null` until the audit ends,
 so a killed run is recognisable. The matrix holds text only; screenshots stay on disk. With `LC_APPS` the multi-app rows are in every
 matrix after the first app's.
 

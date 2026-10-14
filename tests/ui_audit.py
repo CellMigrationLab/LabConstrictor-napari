@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import napari  # noqa: E402
 import ui_audit_controls as controls  # noqa: E402
+import ui_audit_core as core  # noqa: E402
 import ui_audit_forms as forms  # noqa: E402
 import ui_audit_runs as runs  # noqa: E402
 from ui_audit_core import (  # noqa: E402
@@ -250,6 +251,8 @@ def _listed(host: Host, cfg: Config, app: str) -> str:
 
 def audit(cfg: Config, on_widget: Callable[[Any], None] | None = None) -> int:
     """Run the whole audit; the number of failed checks. `on_widget` (the self test) gets the dock widget before the first check."""
+    core.HOST_VERSION = core.host_version()
+    print("NOTE ui_napari_host_version %s" % core.HOST_VERSION, flush=True)
     host = open_host()
     failed = 0
     rec: Recorder | None = None

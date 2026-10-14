@@ -224,7 +224,7 @@ ROW_FIELDS = {
     "screenshot",
     "ts",
 }
-expect("matrix_schema", all(set(r) >= ROW_FIELDS and r["family"] == "ui" and r["host"] == "napari" for r in matrix["rows"]) and {"host", "app", "family", "started", "finished", "expected", "rows"} == set(matrix) and matrix["expected"] == len(json.loads((cfg.shots / "expected_napari_synthetic.json").read_text())), sorted(matrix))  # fmt: skip
+expect("matrix_schema", all(set(r) >= ROW_FIELDS and r["family"] == "ui" and r["host"] == "napari" for r in matrix["rows"]) and {"host", "app", "family", "host_version", "started", "finished", "expected", "rows"} == set(matrix) and matrix["expected"] == len(json.loads((cfg.shots / "expected_napari_synthetic.json").read_text())), sorted(matrix))  # fmt: skip
 expect(
     "matrix_finished_and_small",
     matrix["finished"] is not None
@@ -422,7 +422,13 @@ CHILD.write_text(
 for mode in ("freeze", "die"):
     shots = work / ("watch_" + mode)
     env = dict(os.environ, LC_APP="synthetic", LC_APP_TESTS=str(quick), LC_EXPECT_NAPARI="listed", LC_SHOTS=str(shots), LC_UI_TOOL_TIMEOUT="60", CHILD_MODE=mode)  # fmt: skip
-    code = supervise([sys.executable, str(CHILD)], shots, ["synthetic"], 45.0, env)
+    for attempt in range(
+        3
+    ):  # a Qt abort at start-up (seen under CPU load, exit -6) never reached the seeded freeze or death: try again
+        code = supervise([sys.executable, str(CHILD)], shots, ["synthetic"], 45.0, env)
+        if (shots / "expected_napari_synthetic.json").is_file():
+            break
+        print("watchdog %s: the child died before it started (attempt %d), run again" % (mode, attempt + 1))
     doc = json.loads((shots / "matrix_ui_napari_synthetic.json").read_text(encoding="utf-8"))
     ids = {r["id"]: r for r in doc["rows"]}
     expected = json.loads((shots / "expected_napari_synthetic.json").read_text(encoding="utf-8"))
@@ -443,7 +449,7 @@ for mode in ("freeze", "die"):
 red5, st5, _ = run_audit(Config(HOME, ["nothere"], {}, work / "shots5", "not_listed", 120.0))
 expect(
     "not_listed_one_check_and_a_note",
-    red5 == 0 and st5.get("ui_napari_not_listed") == "PASS" and len(st5) == 2,
+    red5 == 0 and st5.get("ui_napari_not_listed") == "PASS" and len(st5) == 3,
     st5,
 )
 red6, st6, _ = run_audit(Config(HOME, ["synthetic"], {}, work / "shots6", "not_listed", 120.0))

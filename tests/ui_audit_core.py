@@ -20,6 +20,9 @@ from qtpy.QtWidgets import QApplication, QWidget
 
 HOST = "napari"
 FAMILY = "ui"
+HOST_VERSION = (
+    ""  # set once by host_version() when the audit starts (the watchdog parent never imports napari)
+)
 DEFAULT_TOOL_TIMEOUT_S = 300.0
 DETAIL_MAX = 500
 
@@ -39,6 +42,26 @@ class AuditConfigError(Exception):
 def sanitise(text: str) -> str:
     """`[a-z0-9_]` only, as the check ids need (a tool id may hold dots or dashes)."""
     return re.sub(r"[^a-z0-9_]+", "_", text.lower()).strip("_")
+
+
+def host_version() -> str:
+    """The Napari host under audit: the installed distribution's version (a tag install), plus the git commit when it is an editable
+    checkout, so a matrix says which host it describes."""
+    import subprocess
+    from importlib import metadata
+
+    version = metadata.version("napari-labconstrictor")
+    root = Path(__file__).resolve().parent.parent
+    if (root / ".git").exists():
+        sha = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if sha.returncode == 0:
+            return "%s+git.%s (editable checkout)" % (version, sha.stdout.strip())
+    return version
 
 
 def now() -> str:
@@ -131,6 +154,7 @@ class Recorder:
             "host": HOST,
             "app": self.app,
             "family": FAMILY,
+            "host_version": HOST_VERSION,
             "started": self.started,
             "finished": self.finished,
             "expected": len(self.expected),
