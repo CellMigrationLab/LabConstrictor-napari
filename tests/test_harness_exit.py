@@ -64,70 +64,70 @@ class Leave(unittest.TestCase):
         self.assertIn("leaves %s" % LEAVES_AT_ONCE, done.stdout)
 
 
-CLIENT_THREADS = (
-    "import threading\n"
-    "def client_threads():\n"
-    "    return [t.name for t in threading.enumerate() if t.name.endswith(('(_read_responses)', '(_read_stderr)'))]\n"
+WINDOWS_PYSIDE = sys.platform == "win32" and qtpy.API_NAME.startswith(
+    "PySide"
+)  # where the fatal line was measured
+FATAL = "Windows fatal exception"
+HARNESS_VIEWER = (
+    "import _harness, napari\n"  # the viewer with the dock widget, as test_calibration_transitions.py has it
 )
-START_WORKER = (
-    "from labconstrictor_tools import client\n"
-    "worker = client.WorkerProcess('synthetic')\n"
-    "assert len(client_threads()) == 2, client_threads()\n"
-)  # one real worker (the registered example app): its two reader threads exist and block on its pipes
+OPEN_VIEWER = (
+    "import napari\n"
+    "from qtpy.QtWidgets import QApplication\n"
+    "viewer = napari.Viewer(show=True)\n"
+    "QApplication.instance().processEvents()\n"
+)
+SPY_AT_EXIT = (
+    "import os\n"
+    "real_exit = os._exit\n"
+    "def at_exit(code):\n"
+    "    print('viewers open at exit:', len(napari.Viewer._instances), flush=True)\n"
+    "    real_exit(code)\n"
+    "os._exit = at_exit\n"
+)
+SABOTAGE = (
+    "_paths._close_viewer = lambda: None\n"  # what `_leave` calls is looked up in the module at the call
+)
 
 
-class LeaveReapsWorkers(unittest.TestCase):
-    """A worker that is still alive at exit has two pipe-reader threads. `_leave` shuts it down first (`_paths._reap_workers`):
-    the Windows PySide6 access violation inside `os._exit` (CI run 38518804532) happened with exactly those threads blocked.
+class LeaveClosesViewer(unittest.TestCase):
+    """A viewer still open at `os._exit` made Windows PySide6 print an access violation (60 of 60 runs) and in 6 of 60 a fatal one after
+    the verdict. `_leave` closes it first (`_paths._close_viewer`).
     """
 
-    def test_a_worker_left_running_does_not_change_the_exit_code(self) -> None:
+    def test_a_script_with_a_viewer_exits_zero_without_a_fatal_line(self) -> None:
         runs, passed = 15, 0
         for _ in range(runs):
-            done = run(CLIENT_THREADS + START_WORKER + "sys.exit(0)")
-            passed += done.returncode == 0
+            done = run(HARNESS_VIEWER + "sys.exit(0)")
+            passed += done.returncode == 0 and FATAL not in done.stderr
             self.assertEqual(done.returncode, 0, done.stderr)
-        print("worker left running at sys.exit: %d of %d runs exited 0" % (passed, runs))
+            if WINDOWS_PYSIDE:
+                self.assertNotIn(FATAL, done.stderr)
+        print("viewer open at sys.exit: %d of %d runs exited 0 without a fatal line" % (passed, runs))
 
-    def test_reaping_ends_the_worker_and_its_reader_threads(self) -> None:
-        done = run(
-            CLIENT_THREADS
-            + START_WORKER
-            + "_paths._reap_workers()\n"
-            + "print('threads left', client_threads(), 'worker alive', worker.proc.poll() is None, flush=True)\n"
-        )
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertIn("threads left [] worker alive False", done.stdout)
-
-    def test_sabotage_without_the_helper_the_threads_stay(self) -> None:
-        done = run(
-            CLIENT_THREADS
-            + START_WORKER
-            + "_paths._reap_workers = lambda timeout=10.0: None\n"
-            + "_paths._reap_workers()\n"
-            + "print('threads left', len(client_threads()), flush=True)\n"
-            + "os_exit = __import__('os')._exit\n"
-            + "os_exit(0)\n"  # the worker dies with its input, as in the harness
-        )
-        self.assertIn(
-            "threads left 2", done.stdout, done.stderr
-        )  # the thread assertion above would fail here
-
-    def test_leave_reaps_before_the_final_exit(self) -> None:
-        done = run(
-            CLIENT_THREADS
-            + START_WORKER
-            + "import os\n"
-            + "real_exit = os._exit\n"
-            + "def at_exit(code):\n"
-            + "    print('at exit: threads', client_threads(), 'worker alive', worker.proc.poll() is None, flush=True)\n"
-            + "    real_exit(code)\n"
-            + "os._exit = at_exit\n"
-            + "sys.exit(0)\n"
-        )
+    def test_leave_closes_the_viewer_before_the_final_exit(self) -> None:
+        done = run(OPEN_VIEWER + SPY_AT_EXIT + "sys.exit(0)")
         self.assertEqual(done.returncode, 0, done.stderr)
         if LEAVES_AT_ONCE:
-            self.assertIn("at exit: threads [] worker alive False", done.stdout)
+            self.assertIn("viewers open at exit: 0", done.stdout)
+
+    def test_the_harness_viewer_is_closed_too(self) -> None:
+        done = run(HARNESS_VIEWER + SPY_AT_EXIT + "_harness.finish()")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        if LEAVES_AT_ONCE:
+            self.assertIn("viewers open at exit: 0", done.stdout)
+
+    def test_sabotage_without_the_helper_the_viewer_stays_open(self) -> None:
+        """With `_close_viewer` a no-op the viewer is still open at the exit (seen on every platform) and, on Windows PySide6, the
+        fatal-line assertion above can fail: it fails only because the helper did not run."""
+        done = run(HARNESS_VIEWER + SABOTAGE + SPY_AT_EXIT + "sys.exit(0)")
+        if LEAVES_AT_ONCE:
+            self.assertIn("viewers open at exit: 1", done.stdout, done.stderr)
+        if WINDOWS_PYSIDE:
+            fatal = [FATAL in run(HARNESS_VIEWER + SABOTAGE + "sys.exit(0)").stderr for _ in range(3)] + [
+                FATAL in done.stderr
+            ]
+            self.assertTrue(any(fatal), "the fatal line did not appear without the helper: %s" % fatal)
 
 
 class LeaveWaitsForPrune(unittest.TestCase):
