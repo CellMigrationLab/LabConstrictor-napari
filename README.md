@@ -78,6 +78,8 @@ python -m pip install https://github.com/CellMigrationLab/LabConstrictor-napari/
 
 **Which Tools:** the plugin needs LabConstrictor-Tools **v0.3.0-alpha.1 or newer** (version `0.3.0a1`; the `main` archive above is). It uses `runs.build_record`, `runs.record_json` and `runs.done_status` to write `run.json` and the done marker exactly as Tools does. Those came in v0.2.0-rc.2, which reports the same version as rc.1 (`0.2.0rc1`), so `pip` requires `labconstrictor-tools>=0.3.0a1`, and the plugin also checks the version and the three functions when it loads: with an older Tools it refuses to load with a message that says to update Tools.
 
+**Which apps are listed:** napari lists an app only if the app declares napari in its `hosts` (registry entry field, feature `app_hosts_v1`, rule `labconstrictor_tools.app_hosts.listed_for`). An app that leaves napari out, or whose declaration is not valid, is not offered; the widget says so in its "skipped" line and the sentence is written to the Tools log. An app with no declaration is still listed, and the log says `declares no hosts` each time the list is read. This needs Tools 0.3.0a1 with the feature `app_hosts_v1`; the plugin refuses to load without it.
+
 Neither is on PyPI yet. These are source archives, so no `git` program is needed (with git you can use `git+https://github.com/CellMigrationLab/<repository>` instead).
 
 The plugin installs no Qt backend: it uses `qtpy` and runs on the one your napari has. If you install napari yourself, we recommend a **Qt6** backend: `python -m pip install "napari[pyqt6]"` or `python -m pip install "napari[pyside6]"`. PyQt5 is not tested here; napari deprecated it in 0.8.0 and plans to drop Qt5 support.

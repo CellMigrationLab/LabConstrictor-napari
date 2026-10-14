@@ -49,6 +49,9 @@ TOOLS_MINIMUM = (
     "0.3.0a1"  # the Tools version string (tag v0.3.0-alpha.1) the plugin needs; pyproject says the same
 )
 TOOLS_MINIMUM_TAG = "v0.3.0-alpha.1"
+HOSTS_FEATURE = (
+    "app_hosts_v1"  # the `features` id of a Tools that has the per-host discovery rule (app_hosts.listed_for)
+)
 _RUN_HELPERS = (
     "build_record",
     "record_json",
@@ -65,11 +68,24 @@ def _installed_version() -> str:
         return ""
 
 
-def tools_problem(runs_module: Any = tools_runs, installed: str | None = None) -> str | None:
-    """None when the installed labconstrictor-tools is new enough and has the run-record helpers this plugin calls, else one sentence.
+def _installed_features() -> list[str]:
+    try:
+        from labconstrictor_tools.features import FEATURES
 
-    Two checks, because each alone can be wrong: the version (a Tools below TOOLS_MINIMUM, which includes v0.2.0-rc.1 and rc.2, both
-    `0.2.0rc1`) and the helpers themselves (Tools lists no `features` id for them, docs/PROTOCOL.md), which name the real need.
+        return sorted(FEATURES)
+    except ImportError:
+        return []
+
+
+def tools_problem(
+    runs_module: Any = tools_runs, installed: str | None = None, features: list[str] | None = None
+) -> str | None:
+    """None when the installed labconstrictor-tools is new enough, has the run-record helpers this plugin calls and the feature
+    `app_hosts_v1` (the discovery rule napari applies), else one sentence.
+
+    Three checks, because each alone can be wrong: the version (a Tools below TOOLS_MINIMUM, which includes v0.2.0-rc.1 and rc.2, both
+    `0.2.0rc1`), the helpers themselves (Tools lists no `features` id for them, docs/PROTOCOL.md), which name the real need, and the
+    feature id (a 0.3.0a1 build from before the rule has the version but not the id).
     """
     from labconstrictor_tools.compat import parse_version
 
@@ -77,9 +93,11 @@ def tools_problem(runs_module: Any = tools_runs, installed: str | None = None) -
     parsed, wanted = parse_version(version), parse_version(TOOLS_MINIMUM)
     too_old = parsed is not None and wanted is not None and parsed < wanted
     missing = [name for name in _RUN_HELPERS if not callable(getattr(runs_module, name, None))]
-    if not too_old and not missing:
+    no_feature = HOSTS_FEATURE not in (_installed_features() if features is None else features)
+    if not too_old and not missing and not no_feature:
         return None
     lacks = " and has no runs.%s" % ", runs.".join(missing) if missing else ""
+    lacks += " and lacks the feature %s" % HOSTS_FEATURE if no_feature else ""
     return (
         "napari-labconstrictor needs labconstrictor-tools %s or newer (the installed one is %s%s): update Tools to %s or newer "
         "(version %s), e.g. pip install -U git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
