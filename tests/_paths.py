@@ -66,7 +66,8 @@ def _reap_workers(timeout: float = 10.0) -> None:
         for cache in [o for o in objects if isinstance(o, workers_module.WorkerCache)]:
             cache.shutdown(final=True)
     for worker in [o for o in objects if isinstance(o, client_module.WorkerProcess)]:
-        if worker.proc.poll() is None:
+        proc = getattr(worker, "proc", None)  # a test double that replaced the class has none
+        if proc is not None and proc.poll() is None:
             worker.close(timeout=max(1.0, deadline - time.monotonic()))
     del objects
     for thread in threading.enumerate():
