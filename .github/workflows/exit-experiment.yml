@@ -1,24 +1,31 @@
 name: exit-experiment
 on:
+  push:
+    branches: [claude/tmp-exit-experiment-1]
   workflow_dispatch:
-    inputs:
-      runs:
-        description: runs per variant
-        default: "40"
-      variants:
-        description: JSON list of variants to run
-        default: '["V0","V1","V2","V3","V4","V5"]'
 env:
   LC_TOOLS_SPEC: "git+https://github.com/CellMigrationLab/LabConstrictor-Tools"
 jobs:
+  cfg:
+    runs-on: ubuntu-latest
+    outputs:
+      runs: ${{ steps.c.outputs.runs }}
+      variants: ${{ steps.c.outputs.variants }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: c
+        run: |
+          echo "runs=$(jq -r .runs exp_config.json)" >> "$GITHUB_OUTPUT"
+          echo "variants=$(jq -c .variants exp_config.json)" >> "$GITHUB_OUTPUT"
   exp:
+    needs: cfg
     name: ${{ matrix.variant }}
     runs-on: windows-latest
-    timeout-minutes: 300
+    timeout-minutes: 340
     strategy:
       fail-fast: false
       matrix:
-        variant: ${{ fromJSON(inputs.variants) }}
+        variant: ${{ fromJSON(needs.cfg.outputs.variants) }}
     env:
       LC_EXPECT_QT: PySide6
       EXP_VARIANT: ${{ matrix.variant }}
@@ -46,8 +53,8 @@ jobs:
         shell: bash
         working-directory: tests
         run: |
-          N=${{ inputs.runs }}
-          crashes=0; fatals=0; nonzero=0; noverdict=0
+          N=${{ needs.cfg.outputs.runs }}
+          fatals=0; nonzero=0; noverdict=0
           for i in $(seq 1 $N); do
             timeout 900 python _exp_runner.py test_calibration_transitions.py > run.log 2>&1; rc=$?
             fatal=$(grep -c "Windows fatal exception" run.log || true)
