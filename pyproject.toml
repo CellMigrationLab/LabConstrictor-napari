@@ -94,7 +94,7 @@ module = [
     "test_run_identity", "test_run_record", "test_run_button", "test_run_state", "test_scroll", "test_shapes", "test_units",
     "test_widget", "test_widget_hardening", "test_widgets",
     "ui_audit", "ui_audit_controls", "ui_audit_core", "ui_audit_forms", "ui_audit_place", "ui_audit_runs", "ui_audit_watch",
-    "ui_synthetic_napari", "test_ui_audit",
+    "ui_synthetic_napari", "ui_audit_probe_app", "test_ui_audit", "test_ui_audit_regressions",
 ]
 disable_error_code = [
     "arg-type", "assignment", "attr-defined", "call-arg", "call-overload", "func-returns-value", "index", "method-assign", "misc",
