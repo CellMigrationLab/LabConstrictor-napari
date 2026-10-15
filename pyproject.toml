@@ -91,7 +91,7 @@ module = [
     "test_parity_integer_limit", "test_parity_messages", "test_parity_points_frame", "test_parity_region",
     "test_parity_results", "test_parity_worker_close", "test_presentation", "test_qt_backend", "test_region",
     "test_results_and_workers", "test_retention_exit", "test_retention_markers", "test_retention_prune_real",
-    "test_run_identity", "test_run_record", "test_run_state", "test_scroll", "test_shapes", "test_units",
+    "test_run_identity", "test_run_record", "test_run_button", "test_run_state", "test_scroll", "test_shapes", "test_units",
     "test_widget", "test_widget_hardening", "test_widgets",
 ]
 disable_error_code = [
