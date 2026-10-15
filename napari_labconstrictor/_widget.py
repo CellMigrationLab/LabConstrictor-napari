@@ -449,7 +449,13 @@ class LabConstrictorWidget(QWidget):
         signature = signature_from_schema(tool, {"image": Image, "labels": Labels})
         run.__signature__ = signature  # type: ignore[attr-defined]  # typeshed omits __signature__ on functions; magicgui reads it
         run.__name__ = tool["id"]
-        return magicgui(run, call_button="Run", persist=False, auto_call=False)
+        gui: Any = magicgui(
+            run, call_button="Run", persist=False, auto_call=False
+        )  # Any: magicgui types call_button as optional
+        # magicgui re-enables Run when its click handler returns, i.e. right after the run was started: this slot is connected
+        # after magicgui's own, so it runs after it and puts the button back to what the run state says
+        gui.call_button.changed.connect(self._sync_run_button)
+        return gui
 
     def _add_file_sources(self, tool: Tool) -> dict[str, Any]:
         """Every image/labels parameter can also come from a file: an 'or file' row under its layer chooser.
@@ -1361,6 +1367,11 @@ class LabConstrictorWidget(QWidget):
         self.restart_button.setEnabled(not running)  # and a restart would close the worker that is running it
         if self.gui is not None:
             self.gui.call_button.enabled = not running
+
+    def _sync_run_button(self, *_: Any) -> None:
+        """Run is usable exactly when no run is in progress (the widget being closed ends the run)."""
+        running = self.task is not None and not self.task.done.is_set() and not self._closed
+        self.gui.call_button.enabled = not running
 
     def cancel(self, *_: Any) -> None:
         if not self.task or self.task.done.is_set():
