@@ -98,6 +98,21 @@ def main() -> int:
         summary.append({"case": number, "dataset": primary.get(number), "tool": tool_id, "status": report["status"], "code": report.get("code"), "problems": problems})
         print("CASE %03d %-10s %-28s %s" % (number, report["status"], tool_id, "OK" if not problems else "MISMATCH " + "; ".join(problems)[:200]), flush=True)
         pump(0.1)
+    # datasets that are judged by what the form shows (no case, `host_checks` only): the file goes into the image's 'or file' row, then the pixel-size boxes are read
+    for data in truth["datasets"]:
+        if data["primary_case"] is not None or not data.get("host_checks"):
+            continue
+        try:
+            tool = next(t for t in ctx.schema["tools"] if any(p.get("pixel_size_of") for p in t["inputs"]))
+            runs.prepare(ctx, tool["id"], {"inputs": {}})
+            image_param = next(p["pixel_size_of"] for p in tool["inputs"] if p["name"] == data["host_checks"][0]["param"])
+            w.file_sources[image_param].value = cfg.tests[app] / data["files"][0]
+            pump(0.5)
+            report = {"status": "HOST_ONLY", "host_observed": pixel_boxes(ctx, tool)}
+        except Exception as problem:  # noqa: BLE001
+            report = {"status": "DRIVER_ERROR", "error": "%s: %s" % (type(problem).__name__, problem), "host_observed": {}}
+        (out / (data["id"] + ".json")).write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print("HOSTONLY %s %s" % (data["id"], report["host_observed"]), flush=True)
     (out / "cases_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (out / "not_expressible.json").write_text(json.dumps(not_expressible, indent=2), encoding="utf-8")
     print("SUMMARY %d cases, %d differ from their own expectation, %d not expressible in the form" % (len(summary), sum(1 for s in summary if s.get("problems")), len(not_expressible)), flush=True)

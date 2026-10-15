@@ -176,7 +176,13 @@ def reset_unset_inputs(ctx: AppCtx, tool: dict[str, Any], case: dict[str, Any]) 
             w.unset_toggles[name].value = False
         elif param["type"] in ("image", "labels"):
             w.file_sources[name].value = None
-        elif "default" in param and not param.get("pixel_size_of"):
+        elif param.get("pixel_size_of"):
+            # a value typed for an earlier case stays in the box (the host keeps a `user` value on purpose): a fresh form shows the image's calibration, so empty it as a person would
+            field = w.gui[name].native
+            field.setText("")
+            field.textEdited.emit("")
+            field.editingFinished.emit()
+        elif "default" in param:
             w.gui[name].value = param["default"]
 
 
