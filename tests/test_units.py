@@ -304,6 +304,26 @@ class TiffCases(unittest.TestCase):
         self.assertIsNone(_units.microns_yx_from_tiff_checked(TMP / "gone.tif")[0])
 
 
+class ImageJEscapedUnit(unittest.TestCase):
+    def test_a_micrometre_written_by_imagej_is_recognised(self) -> None:
+        self.assertEqual(_units.imagej_unit_text("\\u00B5m"), "\u00b5m")
+        self.assertEqual(_units.imagej_unit_text("um"), "um")
+        self.assertIsNone(_units.imagej_unit_text(None))
+        self.assertEqual(_units.unit_factor(_units.imagej_unit_text("\\u00B5m")), (1.0, None))
+
+    def test_a_tiff_with_the_escaped_unit_gives_the_pixel_size(self) -> None:
+        path = TMP / "imagej_um.tif"
+        tifffile.imwrite(
+            path,
+            np.zeros((20, 20), np.uint8),
+            imagej=True,
+            resolution=(50.0, 50.0),
+            metadata={"unit": "\\u00B5m"},
+        )
+        self.assertEqual(_units.microns_yx_from_tiff(path), (0.02, 0.02))
+        self.assertEqual(tifffile.TiffFile(path).imagej_metadata["unit"], "\\u00B5m")
+
+
 class Conformance(unittest.TestCase):
     def test_every_case_of_the_file_is_known_to_this_test(self) -> None:
         self.assertEqual(sorted(CASES), ["CAL-%02d" % n for n in range(1, 21)])
