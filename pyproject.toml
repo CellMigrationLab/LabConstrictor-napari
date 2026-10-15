@@ -84,7 +84,7 @@ module = [
     "test_async_cache", "test_async_cancel", "test_async_close", "test_async_conformance", "test_async_run",
     "test_async_stale", "test_calibration", "test_calibration_text", "test_calibration_transitions",
     "test_channel_memory", "test_channels", "test_channels_hyperstack", "test_channels_rgb", "test_coordinate_frame",
-    "test_coordinate_frame_run", "test_copy_command", "test_file_sources", "test_form_gc_thread", "test_harness_exit",
+    "test_coordinate_frame_run", "test_copy_command", "test_file_sources", "test_form_fixes", "test_form_gc_thread", "test_harness_exit",
     "test_interactions", "test_messages_points", "test_number_conformance", "test_number_grammar",
     "test_number_limits", "test_number_linked", "test_number_linked_run", "test_number_linked_states",
     "test_number_run", "test_number_text", "test_parity_copy_notes", "test_parity_dimensions",
