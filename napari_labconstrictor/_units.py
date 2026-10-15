@@ -10,6 +10,7 @@ relative to the larger) and units that are not a length are unknown too, with a 
 from __future__ import annotations
 
 import math
+import re
 import struct
 from dataclasses import dataclass
 from functools import cache
@@ -49,6 +50,16 @@ def _catalog() -> tuple[dict[str, float], dict[str, float]]:
         symbols.update({symbol: factor for symbol in entry["symbols"]})
         words.update({word: factor for word in entry["words"]})
     return symbols, words
+
+
+_IMAGEJ_ESCAPE = re.compile(r"\\u([0-9A-Fa-f]{4})")
+
+
+def imagej_unit_text(unit: Any) -> Any:
+    """ImageJ writes a non-ASCII unit as the text `\\u00B5m` (a backslash, not the character): turn each `\\uXXXX` into its character so the catalog lookup sees 'µm'."""
+    if not isinstance(unit, str):
+        return unit
+    return _IMAGEJ_ESCAPE.sub(lambda found: chr(int(found.group(1), 16)), unit)
 
 
 def unit_factor(unit: Any) -> tuple[float | None, str | None]:
@@ -211,7 +222,11 @@ def calibration_from_tiff(path: str | Path) -> tuple[Calibration, str | None]:
                 return UNKNOWN, None
             per_x, size_x = x_tag
             per_y, size_y = _tag(tags, "YResolution") or x_tag  # a missing YResolution means square
-            unit = (tif.imagej_metadata or {}).get("unit") if getattr(tif, "is_imagej", False) else None
+            unit = (
+                imagej_unit_text((tif.imagej_metadata or {}).get("unit"))
+                if getattr(tif, "is_imagej", False)
+                else None
+            )
             if unit not in (None, ""):  # ImageJ's own unit text: it names the unit, the tags give the number
                 return calibrate((size_y, unit), (size_x, unit)), None
             code = int(tags["ResolutionUnit"].value) if "ResolutionUnit" in tags else _RESOLUTION_UNIT_INCH
