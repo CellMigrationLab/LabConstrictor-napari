@@ -92,6 +92,9 @@ def _unfinished_text(task: Any) -> str:
     return _FINISH_TEXT[task.status]
 
 
+_ZERO_MEANS_CALIBRATION = "0 means: use the image's calibration"
+
+
 class _Signals(QObject):
     progress = Signal(object, object)
     done = Signal(object)
@@ -942,9 +945,16 @@ class LabConstrictorWidget(QWidget):
                 self.gui[name].enabled = applies
 
     def _refresh_layer_choices(self, *_: Any) -> None:
-        for widget in self.gui or []:
-            if hasattr(widget, "reset_choices"):
-                widget.reset_choices()
+        """A layer was inserted or removed: only the layer choosers (the image and labels parameters) list layers. Any other widget with
+        `reset_choices` (a radio group, a dropdown filled by a lookup) must not be reset: a radio group rebuilds its buttons and leaves
+        the old ones on screen as parentless windows (N-1), and a lookup's choices would be lost.
+        """
+        tool = self.tool
+        if self.gui is None or not tool:
+            return
+        for param in tool["inputs"]:
+            if param["type"] in ("image", "labels"):
+                self.gui[param["name"]].reset_choices()
 
     def _link_calibration(self, image_name: str, pixel_name: str) -> None:
         """The pixel-size field follows the file chosen for its image, else the layer chosen for it, until the person types a value
@@ -967,6 +977,10 @@ class LabConstrictorWidget(QWidget):
             pixel.tooltip = link.tooltip()
 
         def refresh(*_: Any) -> None:
+            if (
+                self.status.text() == _ZERO_MEANS_CALIBRATION
+            ):  # the note belongs to the entry that caused it, not to the next image
+                self.status.setText("")
             derived = self._derive_calibration(image, file_edit)
             if link.source_changed(derived):
                 show(link.value)  # a `user` value stays: its text is never rewritten
@@ -977,9 +991,9 @@ class LabConstrictorWidget(QWidget):
             entry = pixel.native.text()
             link.user_edit(entry)
             if link.state == UNSET:  # cleared (or typed 0): the image's calibration again
-                if entry.strip():  # a typed 0 is never replaced silently (CAL-T4 says what it means)
-                    self.status.setText("0 means: use the image's calibration")
                 refresh()
+                if entry.strip():  # a typed 0 is never replaced silently (CAL-T4 says what it means)
+                    self.status.setText(_ZERO_MEANS_CALIBRATION)
             else:
                 pixel.tooltip = link.tooltip()
 
