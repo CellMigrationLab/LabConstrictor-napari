@@ -383,7 +383,9 @@ def windows_problem(expected: list[str]) -> str | None:
     if class_names(shown) != sorted(expected):
         return "top-level windows are %s, expected %s" % (class_names(shown), sorted(expected))
     screen = screen_rect()
-    out = [type(w).__name__ for w in shown if not screen.contains(w.frameGeometry())]
+    # The napari main window is sized by napari to the machine (it can exceed a small CI screen); dialogs and popups
+    # are ours to place, so only those must lie inside the screen.
+    out = [type(w).__name__ for w in shown if type(w).__name__ != MAIN_WINDOW and not screen.contains(w.frameGeometry())]
     return "windows outside the screen %dx%d: %s" % (screen.width(), screen.height(), out) if out else None
 
 
