@@ -974,8 +974,11 @@ class LabConstrictorWidget(QWidget):
 
         def edited() -> None:
             typing[0] = False
-            link.user_edit(pixel.native.text())
+            entry = pixel.native.text()
+            link.user_edit(entry)
             if link.state == UNSET:  # cleared (or typed 0): the image's calibration again
+                if entry.strip():  # a typed 0 is never replaced silently (CAL-T4 says what it means)
+                    self.status.setText("0 means: use the image's calibration")
                 refresh()
             else:
                 pixel.tooltip = link.tooltip()
