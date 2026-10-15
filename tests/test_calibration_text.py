@@ -69,6 +69,13 @@ expect("T4_zero_shows_the_source", shown() == "0.5" and link().state == "auto", 
 expect(
     "T4_zero_says_what_it_means", w.status.text() == "0 means: use the image's calibration", w.status.text()
 )
+choose(A)
+expect(
+    "T4_the_note_is_gone_with_the_next_image",
+    w.status.text() != "0 means: use the image's calibration",
+    w.status.text(),
+)
+choose(B)
 type_value("0.3")
 type_value("")
 expect("T4_empty_shows_the_source", shown() == "0.5" and link().state == "auto", (shown(), link().state))
