@@ -391,7 +391,17 @@ def replay_prerequisites(ctx: AppCtx, index: int, deadline: float) -> list[str]:
         if j in ctx.replayed or never_run(case["tool"]) or "cancel_after_s" in case or case.get("skip"):
             continue
         ctx.replayed.add(j)
-        prepare(ctx, case["tool"], case)
+        try:
+            prepare(ctx, case["tool"], case)
+        except ValueError as problem:
+            # VL-10 (d): a case that expects failure may hold a value the form's bounded field cannot take (labelling_efficiency 1.5 in a 0..1 box):
+            # that is the form refusing the input, not a host fault. It is listed for a person (CLI replay not needed for a stateless app).
+            ctx.rec.add(
+                "ui_napari_prerequisite_%s_case%d" % (sanitise(case["tool"]), j), "HUMAN",
+                "case %d of %s cannot be typed into the form (%s); its expected outcome %s is covered by the CLI" % (j, case["tool"], problem, case.get("expect", {})),
+                case["tool"], "prerequisite",
+            )  # fmt: skip
+            continue
         obs, task = execute(ctx, case["tool"], case, deadline)
         expect = case.get("expect", {})
         wanted = expect.get("status", "COMPLETE")

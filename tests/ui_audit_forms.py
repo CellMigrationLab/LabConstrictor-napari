@@ -106,7 +106,11 @@ def _linked(ctx: AppCtx, param: dict[str, Any], widget: Any) -> str:
     widget.native.editingFinished.emit()
     if widget.native.text() != "0.5":
         raise AssertionError("typed 0.5, the box shows %r" % widget.native.text())
-    button = next(b for b in w.gui if type(b).__name__ == "PushButton" and b.text == CALIBRATION_BUTTON)
+    # VL-10 (b): every pixel-size field has its own button with the same label; the host inserts it right after its field
+    fields = list(w.gui)
+    button = fields[next(i for i, f in enumerate(fields) if f is widget) + 1]
+    if type(button).__name__ != "PushButton" or button.text != CALIBRATION_BUTTON:
+        raise AssertionError("the widget after %s is %s, not its calibration button" % (param["name"], type(button).__name__))
     scroll_to(w, button.native)
     real_click(button.native)
     if widget.native.text() != "":
@@ -174,12 +178,16 @@ def _layer_input(ctx: AppCtx, param: dict[str, Any], widget: Any) -> str:
 
 
 def _path(ctx: AppCtx, param: dict[str, Any], widget: Any) -> str:
+    start = widget.value  # VL-10 (c): the check must not leave its test path in the form (the next Run would send it)
     with tempfile.TemporaryDirectory() as folder:
         target = Path(folder) if param["type"] == "folder" else Path(folder) / "a.csv"
-        widget.value = target
-        if Path(str(widget.value)) != target:
-            raise AssertionError("set %s, read back %s" % (target, widget.value))
-        dialog = browse(ctx, widget.native.findChildren(QPushButton)[0])
+        try:
+            widget.value = target
+            if Path(str(widget.value)) != target:
+                raise AssertionError("set %s, read back %s" % (target, widget.value))
+            dialog = browse(ctx, widget.native.findChildren(QPushButton)[0])
+        finally:
+            widget.value = start
     return "path kept, '...' opened %s" % dialog
 
 
@@ -231,6 +239,12 @@ def _enabled_when(ctx: AppCtx, tool: dict[str, Any], param: dict[str, Any]) -> s
         on, off = True, False
     control.value = on
     pump(0.1)
+    # VL-10 (a): an optional field is also greyed by its own 'set' box; the rule is judged with the box ticked and the box is put back afterwards
+    toggle = w.unset_toggles.get(param["name"])
+    toggle_start = toggle.value if toggle is not None else None
+    if toggle is not None:
+        toggle.value = True
+        pump(0.1)
     enabled = w.gui[param["name"]].enabled
     note = "%s enabled by %s=%r" % (param["name"], rule["param"], on)
     if off is not None:
@@ -240,6 +254,9 @@ def _enabled_when(ctx: AppCtx, tool: dict[str, Any], param: dict[str, Any]) -> s
             raise AssertionError("%s stays enabled when %s=%r" % (param["name"], rule["param"], off))
         note += ", disabled by %r" % (off,)
     control.value = start
+    if toggle is not None:
+        toggle.value = toggle_start
+        pump(0.1)
     if not enabled:
         raise AssertionError("%s is not enabled when %s=%r" % (param["name"], rule["param"], on))
     return note
