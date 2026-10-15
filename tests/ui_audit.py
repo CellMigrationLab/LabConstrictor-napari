@@ -132,7 +132,7 @@ def disk_schema(cfg: Config, app: str) -> dict[str, Any]:
 def build_ctx(host: Host, cfg: Config, app: str, rec: Recorder) -> AppCtx:
     folder = runs.scratch_copy(cfg.tests[app])
     cases, no_case, problem = runs.load_cases(folder)
-    return AppCtx(
+    ctx = AppCtx(
         host,
         cfg,
         app,
@@ -143,6 +143,8 @@ def build_ctx(host: Host, cfg: Config, app: str, rec: Recorder) -> AppCtx:
         tool_labels(host, app),
         case_problem=problem,
     )
+    ctx.scratch = folder  # type: ignore[attr-defined]  # the folder the cases run in (files a tool writes are found there)
+    return ctx
 
 
 def expected_ids(ctx: AppCtx) -> list[str]:

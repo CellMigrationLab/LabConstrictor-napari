@@ -102,6 +102,11 @@ def main() -> int:
     for data in truth["datasets"]:
         if data["primary_case"] is not None or not data.get("host_checks"):
             continue
+        if all(str(c.get("param", "")).startswith("blobs_channel_") for c in data["host_checks"]):
+            report = channel_blob_counts(ctx, cfg.tests[app], data, started=time.time(), timeout=cfg.timeout)
+            (out / (data["id"] + ".json")).write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+            print("HOSTONLY %s %s %s" % (data["id"], report["host_observed"], report.get("error", "")), flush=True)
+            continue
         try:
             tool = next(t for t in ctx.schema["tools"] if any(p.get("pixel_size_of") for p in t["inputs"]))
             runs.prepare(ctx, tool["id"], {"inputs": {}})
@@ -113,6 +118,7 @@ def main() -> int:
             report = {"status": "DRIVER_ERROR", "error": "%s: %s" % (type(problem).__name__, problem), "host_observed": {}}
         (out / (data["id"] + ".json")).write_text(json.dumps(report, indent=2), encoding="utf-8")
         print("HOSTONLY %s %s" % (data["id"], report["host_observed"]), flush=True)
+    (out / "data_dir.txt").write_text(str(getattr(ctx, "scratch", cfg.tests[app])), encoding="utf-8")   # the folder the cases ran in (a copy): files a tool wrote are there, give it to check_ground_truth.py --data
     (out / "cases_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     (out / "not_expressible.json").write_text(json.dumps(not_expressible, indent=2), encoding="utf-8")
     print("SUMMARY %d cases, %d differ from their own expectation, %d not expressible in the form" % (len(summary), sum(1 for s in summary if s.get("problems")), len(not_expressible)), flush=True)
@@ -120,6 +126,45 @@ def main() -> int:
     pump(0.5)
     sys.stdout.flush()
     os._exit(0)
+
+
+def channel_blob_counts(ctx: Any, tests: Path, data: dict[str, Any], started: float, timeout: float) -> dict[str, Any]:
+    """The channel chooser through the real form (alpha.3 driver): the stack/RGB file goes into the image's 'or file' row, each colour/channel k is picked in the Channel chooser
+    (its choices are reported), the tool with a PickChannel parameter runs (a real click on Run) and the number of blobs its summary names is `blobs_channel_k`."""
+    w = ctx.host.widget
+    tool = next((t for t in ctx.schema["tools"] if any(p.get("pick_channel") for p in t["inputs"])), None)
+    if tool is None:
+        return {"status": "DRIVER_ERROR", "error": "no tool of the app has a PickChannel parameter", "host_observed": {}}
+    pname = next(p["name"] for p in tool["inputs"] if p.get("pick_channel"))
+    observed: dict[str, Any] = {}
+    choices: dict[str, Any] = {}
+    errors = []
+    source = str(tests / data["files"][0])
+    for k in range(len(data["host_checks"])):
+        try:
+            runs.prepare(ctx, tool["id"], {"inputs": {pname: source}})
+            w.file_sources[pname].value = tests / data["files"][0]
+            pump(0.6)
+            box = w.channel_boxes[pname]
+            choices = {"choices": list(box.choices), "visible": box.visible}
+            if k >= len(box.choices):
+                errors.append("channel %d: the chooser lists only %s" % (k, list(box.choices)))
+                continue
+            box.value = list(box.choices)[k]
+            pump(0.3)
+            _obs, task = runs.execute(ctx, tool["id"], {"inputs": {pname: source}, "expect": {}}, started + timeout)
+            if task.status != "COMPLETE":
+                errors.append("channel %d: run ended %s %s" % (k, task.status, task.code))
+                continue
+            text = " ".join(str(r.get("text") or r.get("values") or "") for r in task.outputs["results"])
+            found = re.search(r"Found \*\*(\d+)\*\* blob", text)
+            if found:
+                observed["blobs_channel_%d" % k] = int(found.group(1))
+            else:
+                errors.append("channel %d: no 'Found N blob(s)' in the results: %s" % (k, text[:120]))
+        except Exception as problem:  # noqa: BLE001 - one channel failing is a row, not the end
+            errors.append("channel %d: %s: %s" % (k, type(problem).__name__, problem))
+    return {"status": "HOST_ONLY", "host_observed": observed, "channel_chooser": choices, **({"error": "; ".join(errors)} if errors else {})}
 
 
 def runs_judge(case: dict[str, Any], report: dict[str, Any]) -> list[str]:

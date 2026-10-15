@@ -298,6 +298,7 @@ def shown_problems(ctx: AppCtx, tool: dict[str, Any], results: list[dict[str, An
             and layer not in layers
             and name not in w.tables
             and "file:" not in status
+            and "the file is" not in status   # host wording for a no-image tool: "not drawn: there is no image input ... the file is <path>"
         ):
             problems.append("%s %r: no layer, table or file in the status" % (kind, name))
         elif kind == "table" and name not in w.tables:
@@ -411,6 +412,17 @@ def replay_prerequisites(ctx: AppCtx, index: int, deadline: float) -> list[str]:
         obs, task = execute(ctx, case["tool"], case, deadline)
         expect = case.get("expect", {})
         wanted = expect.get("status", "COMPLETE")
+        if wanted == "FAILED" and expect.get("code") == "invalid_pixel_size" and task.status == "FAILED" and task.code == "pixel_size_unknown":
+            # alpha.3 (N-2): a typed pixel size of 0 means 'use the image's calibration' in the Napari form (the status line says so), so the tool's own
+            # refusal of 0 cannot be reached from the form; the image has no calibration, so the run ends pixel_size_unknown. Listed for a person.
+            ctx.rec.add(
+                "ui_napari_prerequisite_%s_case%d" % (sanitise(case["tool"]), j), "HUMAN",
+                "case %d of %s types a pixel size of 0, which the form reads as 'use the image's calibration' (documented in the status line); the form ended FAILED pixel_size_unknown "
+                "instead of the tool's invalid_pixel_size, which the CLI covers | %s" % (j, case["tool"], obs.status_text),
+                case["tool"], "prerequisite",
+            )  # fmt: skip
+            done.append(case["tool"] + "(FAILED)")
+            continue
         if task.status != wanted or ("code" in expect and task.code != expect["code"]):
             raise AssertionError(
                 "prerequisite case %d (%s) ended %s %s, its expect says %s %s | %s"
