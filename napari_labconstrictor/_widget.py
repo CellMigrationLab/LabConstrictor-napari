@@ -205,6 +205,8 @@ class LabConstrictorWidget(QWidget):
             {}
         )  # (app, table name) -> dock widget, so that Replace can swap it
         self._group_members: dict[str, list[Any]] = {}  # collapsible group -> widgets
+        self._channel_choices: dict[str, list[str]] = {}  # image parameter -> the channels its chooser lists
+        self._group_heading: dict[str, Any] = {}  # collapsible group -> its heading button
 
     # ---- layout -------------------------------------------------------
     def _build_layout(self) -> None:
@@ -436,9 +438,9 @@ class LabConstrictorWidget(QWidget):
             self.cal_links, self._cal_refresh, self._cal_commit = {}, {}, {}
             self.unset_toggles = {}
             self.region_toggles = {}
-            self.channel_boxes = {}
+            self.channel_boxes, self._channel_choices = {}, {}
             self.advanced_toggle, self._members = None, {}
-            self._choice_boxes, self._group_members = {}, {}
+            self._choice_boxes, self._group_members, self._group_heading = {}, {}, {}
 
     def _make_form(self, tool: Tool) -> Any:
         from napari.layers import Image, Labels
@@ -474,7 +476,7 @@ class LabConstrictorWidget(QWidget):
             )
             self.gui.insert(list(self.gui).index(layer_widget) + 1, edit)
 
-            edit.changed.connect(lambda *_: self._refresh_enabled())
+            edit.changed.connect(self._enabled_refresher())
             sources[param["name"]] = edit
         return sources
 
@@ -487,8 +489,15 @@ class LabConstrictorWidget(QWidget):
             if not param.get("pick_channel") or param["name"] not in self.file_sources:
                 continue
             name = param["name"]
+
+            def channels_of(_widget: Any, n: str = name) -> list[str]:
+                return self._channel_choices.get(n) or [""]
+
             box = mw.ComboBox(
-                choices=[""], label="  channel", tooltip="The tool receives only this channel", gui_only=True
+                choices=channels_of,
+                label="  channel",
+                tooltip="The tool receives only this channel",
+                gui_only=True,
             )
             box.visible = False
             edit = self.file_sources[name]
@@ -537,7 +546,10 @@ class LabConstrictorWidget(QWidget):
         if box is None:
             return
         names = self._channel_names(name)
-        box.choices = names or [""]
+        self._channel_choices[name] = (
+            names  # the box's choices come from here, so a Container.reset_choices() keeps them
+        )
+        box.reset_choices()
         box.value = names[0] if names else ""
         box.visible = len(names) > 1
 
@@ -572,7 +584,7 @@ class LabConstrictorWidget(QWidget):
             )
             self.gui.insert(list(self.gui).index(widget) + 1, toggle)
             widget.enabled = False
-            toggle.changed.connect(lambda *_: self._refresh_enabled())
+            toggle.changed.connect(self._enabled_refresher())
             toggles[param["name"]] = toggle
         return toggles
 
@@ -592,7 +604,7 @@ class LabConstrictorWidget(QWidget):
                 gui_only=True,
             )
             self.gui.insert(list(self.gui).index(self.gui[param["name"]]) + 1, toggle)
-            toggle.changed.connect(lambda *_: self._refresh_enabled())
+            toggle.changed.connect(self._enabled_refresher())
             toggles[param["name"]] = toggle
         return toggles
 
@@ -638,7 +650,7 @@ class LabConstrictorWidget(QWidget):
             rule = p.get("enabled_when")
             if rule:
                 controller = self.gui[rule["param"]]
-                controller.changed.connect(lambda *_: self._refresh_enabled())
+                controller.changed.connect(self._enabled_refresher())
         self._refresh_enabled()
 
     def _insert_headings(self, inputs: list[Param]) -> list[Any]:
@@ -688,7 +700,6 @@ class LabConstrictorWidget(QWidget):
         button.native.setStyleSheet("font-weight: bold; text-align: left; padding-top: 6px;")
         button.native.setProperty("lc_group", group)
         button.changed.connect(lambda *_: self._toggle_group(group, button))
-        self._group_heading = getattr(self, "_group_heading", {})
         self._group_heading[group] = button
         return button
 
@@ -699,7 +710,7 @@ class LabConstrictorWidget(QWidget):
     def _set_group_open(self, group: str, widgets: list[Any], opened: bool) -> None:
         for w in widgets:
             w.visible = opened
-        button = getattr(self, "_group_heading", {}).get(group)
+        button = self._group_heading.get(group)
         if button is not None:
             button.text = ("\u25be " if opened else "\u25b8 ") + group
 
@@ -891,6 +902,19 @@ class LabConstrictorWidget(QWidget):
         if toggle is not None and not toggle.value:
             return None  # a nullable parameter that is not "set"
         return self.gui[name].value
+
+    def _enabled_refresher(self) -> Callable[..., None]:
+        """The slot a control of the form being built connects to: it refreshes what is greyed out, but only while the form's tool is the
+        current one. A control of a replaced form can still emit while Qt tears it down; its slot must not read the new tool's
+        parameters against the old form (AttributeError 'region' / 'pixel_size', H-N4).
+        """
+        built_for = self.tool
+
+        def refresh(*_: Any) -> None:
+            if built_for is not None and built_for is self.tool:
+                self._refresh_enabled()
+
+        return refresh
 
     def _refresh_enabled(self) -> None:
         """One place decides what is greyed out: a failed enabled_when rule, an unticked 'set', or an image given as a file."""
