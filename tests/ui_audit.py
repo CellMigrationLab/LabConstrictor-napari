@@ -25,6 +25,7 @@ import ui_audit_controls as controls  # noqa: E402
 import ui_audit_core as core  # noqa: E402
 import ui_audit_forms as forms  # noqa: E402
 import ui_audit_runs as runs  # noqa: E402
+from qtpy.QtWidgets import QApplication  # noqa: E402
 from ui_audit_core import (  # noqa: E402
     AppCtx,
     AuditConfigError,
@@ -37,7 +38,6 @@ from ui_audit_core import (  # noqa: E402
     install_sentinel,
     pump,
     sanitise,
-    screen_rect,
 )
 from ui_audit_watch import supervise  # noqa: E402
 
@@ -52,11 +52,21 @@ SENTINELS: list[Any] = []  # keeps the sentinel timer alive
 def open_host() -> Host:
     """The Napari window with the LabConstrictor dock widget, the way a person opens it."""
     viewer = napari.Viewer(show=True)
-    screen = (
-        screen_rect()
-    )  # the window must fit the screen, or a button could be out of reach (run xvfb with -s "-screen 0 1600x1000x24")
-    viewer.window._qt_window.resize(min(1500, screen.width()), min(850, screen.height()))  # noqa: SLF001
-    viewer.window._qt_window.move(0, 0)  # noqa: SLF001
+    window = viewer.window._qt_window  # noqa: SLF001
+    pump(0.5)  # the native window exists and its frame (title bar, borders) is known
+    # the whole window, frame included, must fit the usable part of the screen (not under a taskbar or menu bar), or a button of the dock
+    # is out of reach: a window larger than the screen is cut down by Windows (a 1024x768 CI screen gets a 1024x749 client under its title bar)
+    area = QApplication.primaryScreen().availableGeometry()
+    frame_w = window.frameGeometry().width() - window.width()
+    frame_h = window.frameGeometry().height() - window.height()
+    window.resize(min(1500, area.width() - frame_w), min(850, area.height() - frame_h))
+    window.move(area.topLeft())
+    pump(0.5)
+    if not area.contains(window.frameGeometry()):
+        raise AssertionError(
+            "the Napari window %s does not fit the usable screen %s: run with a larger screen (xvfb -s '-screen 0 1600x1000x24')"
+            % (window.frameGeometry().getRect(), area.getRect())
+        )
     _, widget = viewer.window.add_plugin_dock_widget(PLUGIN, DOCK)
     pump(1.0)
     install_excepthook()  # after napari's own: a slot that raises is recorded against the running check
