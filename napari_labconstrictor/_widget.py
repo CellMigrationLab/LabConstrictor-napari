@@ -380,6 +380,8 @@ class LabConstrictorWidget(QWidget):
 
     # ---- form ---------------------------------------------------------
     def _on_tool_changed(self, *_: Any) -> None:
+        self.status.setText("")  # a note belongs to the tool that caused it
+        self._lookup_note = ""
         self._remove_form()
         tool = self.tool
         if not tool:
