@@ -84,7 +84,9 @@ def enumerate_controls(widget: Any) -> list[Any]:
         if isinstance(c, QWidget) and c.isHidden() and widget.layout().indexOf(c) < 0
     ]
     found: list[Any] = []
-    for obj in widget.findChildren(INTERACTIVE):
+    # PySide6's findChildren takes one class, not a tuple: ask per class and keep each object once
+    candidates = {id(o): o for kind in INTERACTIVE for o in widget.findChildren(kind)}
+    for obj in candidates.values():
         if isinstance(obj, QScrollBar) or isinstance(obj.parent(), (QAbstractSpinBox, QComboBox)):
             continue
         if any(
