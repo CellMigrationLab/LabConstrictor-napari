@@ -349,8 +349,28 @@ def reach_problem(widget: QWidget) -> str | None:
             return "outside the screen %dx%d" % (screen.width(), screen.height())
     top = QApplication.widgetAt(widget.mapToGlobal(rect.center()))
     if top is None or not (top is widget or widget.isAncestorOf(top)):
-        return "covered or clipped by %s" % (type(top).__name__ if top is not None else "nothing")
+        return "covered or clipped by %s (%s)" % (
+            type(top).__name__ if top is not None else "nothing",
+            placement(widget, screen),
+        )
     return None
+
+
+def placement(widget: QWidget, screen: QRect) -> str:
+    """Where the widget, its window and the screen are, in global pixels: what a person needs to see why a click point hits nothing."""
+    window = widget.window()
+    box = QRect(widget.mapToGlobal(widget.rect().topLeft()), widget.size())
+    shown = [
+        "%s %dx%d%+d%+d" % (type(w).__name__, w.width(), w.height(), w.x(), w.y())
+        for w in QApplication.topLevelWidgets()
+        if w.isVisible()
+    ]
+    return "widget %dx%d%+d%+d, its window %dx%d%+d%+d, screen %dx%d%+d%+d, visible top-level windows: %s" % (
+        box.width(), box.height(), box.x(), box.y(),
+        window.width(), window.height(), window.x(), window.y(),
+        screen.width(), screen.height(), screen.x(), screen.y(),
+        "; ".join(shown),
+    )  # fmt: skip
 
 
 def real_click(widget: QWidget, expect_disabled: bool = False, settle: bool = True) -> None:

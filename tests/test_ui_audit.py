@@ -434,7 +434,12 @@ for mode in ("freeze", "die"):
     expect("watchdog_%s_rows_before_the_crash_kept" % mode, ids.get("ui_napari_app_listed", {}).get("status") == "PASS" and ids.get("ui_napari_run_scalar_echo", {}).get("status") == "PASS", sorted(ids)[:5])  # fmt: skip
     print(
         "watchdog %s: exit %s, %d rows, %s"
-        % (mode, code, len(doc["rows"]), ids["ui_napari_driver_crashed"]["detail"][:120])
+        % (
+            mode,
+            code,
+            len(doc["rows"]),
+            ids.get("ui_napari_driver_crashed", {}).get("detail", "NO CRASH ROW")[:120],
+        )
     )
 
 # not_listed: an absent app passes with one check and a NOTE line; a listed one fails

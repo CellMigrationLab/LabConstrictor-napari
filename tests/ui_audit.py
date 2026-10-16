@@ -8,6 +8,7 @@ Prints `CHECK <id> PASS|FAIL <detail>` and `NOTE <id> not run: <reason>` per ass
 `<LC_SHOTS>/matrix_ui_napari_<app>.json` after every one, never stops at the first failure, and exits non-zero if any check failed.
 """
 
+import io
 import json
 import os
 import sys
@@ -15,7 +16,7 @@ import time
 import traceback
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -307,6 +308,8 @@ def child_main() -> None:
 def main() -> None:
     """Start the audit in a child process under the watchdog (ui_audit_watch.py): a hard crash or a frozen Qt thread still ends with a
     complete, red matrix. `--child` runs the audit in this process (no watchdog)."""
+    # the check details quote the widget's own sentences (warning signs, ellipses): a Windows console (cp1252) cannot print them
+    cast(io.TextIOWrapper, sys.stdout).reconfigure(encoding="utf-8")
     if "--child" in sys.argv:
         child_main()
         return

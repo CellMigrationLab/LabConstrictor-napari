@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import _paths  # noqa: F401  (must come first)
 import numpy as np
@@ -19,6 +19,9 @@ from _paths import HOME
 from ui_audit import audit
 from ui_audit_core import Config
 
+cast(io.TextIOWrapper, sys.stdout).reconfigure(
+    encoding="utf-8"
+)  # the check details hold the widget's own sentences ("⚠ ...")
 report: dict[str, bool] = {}
 failures: list[str] = []
 
