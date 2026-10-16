@@ -120,6 +120,9 @@ PANEL = ["run", "cancel", "details", "copy_as_command", "copy_terminal_command",
 
 def run_audit(cfg: Config, hook: Any = None) -> tuple[int, dict[str, str], dict[str, Any]]:
     """Run the driver; (red count, printed id -> status (CHECK PASS/FAIL, NOTE), the matrix of the first app). Prints the lines."""
+    print(
+        "audit of %s (shots in %s) ..." % (cfg.apps, cfg.shots.name), flush=True
+    )  # the lines of the audit itself come when it ends
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         red = audit(cfg, hook)
