@@ -51,7 +51,9 @@ SENTINELS: list[Any] = []  # keeps the sentinel timer alive
 
 def open_host() -> Host:
     """The Napari window with the LabConstrictor dock widget, the way a person opens it."""
+    print("STEP viewer", file=sys.stderr, flush=True)
     viewer = napari.Viewer(show=True)
+    print("STEP viewer made", file=sys.stderr, flush=True)
     window = viewer.window._qt_window  # noqa: SLF001
     # the whole window, frame included, must fit the usable part of the screen (not under a taskbar or menu bar), or a button of the dock
     # is out of reach: a window larger than the screen is cut down by Windows (a 1024x768 CI screen gets a 1024x749 client under its title bar)
@@ -59,9 +61,13 @@ def open_host() -> Host:
     frame_w = window.frameGeometry().width() - window.width()
     frame_h = window.frameGeometry().height() - window.height()
     window.resize(min(1500, area.width() - frame_w), min(850, area.height() - frame_h))
+    print("STEP sizing %s" % (window.frameGeometry().getRect(),), file=sys.stderr, flush=True)
     window.move(area.topLeft())
+    print("STEP dock", file=sys.stderr, flush=True)
     _, widget = viewer.window.add_plugin_dock_widget(PLUGIN, DOCK)
+    print("STEP dock made", file=sys.stderr, flush=True)
     pump(1.0)
+    print("STEP pumped %s" % (window.frameGeometry().getRect(),), file=sys.stderr, flush=True)
     if not area.contains(window.frameGeometry()):
         raise AssertionError(
             "the Napari window %s does not fit the usable screen %s: run with a larger screen (xvfb -s '-screen 0 1600x1000x24')"
