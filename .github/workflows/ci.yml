@@ -65,6 +65,14 @@ jobs:
       - run: pip install "${{ env.LC_TOOLS_SPEC }}" -e ".[test-${{ matrix.qt }}]"
       - run: pip list | grep -i -E "^(napari|PyQt|PySide|QtPy|shiboken|magicgui) "
         shell: bash
+      - name: TEMPORARY crash dumps (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\dumps | Out-Null
+          New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps" -Force | Out-Null
+          New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps" -Name DumpFolder -Value "C:\dumps" -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps" -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
       - name: Mesa llvmpipe software OpenGL (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -94,6 +102,13 @@ jobs:
             echo "::group::$t"; python "$t" || { code=$?; echo "FAILED: $t (exit code $code)"; status=1; }; echo "::endgroup::"
           done
           exit $status
+      - name: TEMPORARY upload crash dumps
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dumps-${{ matrix.qt }}
+          path: C:\dumps
+          if-no-files-found: warn
   lint:
     timeout-minutes: 45
     runs-on: ubuntu-latest
