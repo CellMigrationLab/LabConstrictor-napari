@@ -373,6 +373,16 @@ def placement(widget: QWidget, screen: QRect) -> str:
     )  # fmt: skip
 
 
+def ready_for_click(widget: QWidget) -> None:
+    """What a person's click has and QTest's does not: the window is the active one (a popup menu closes at once when its window is not,
+    which macOS CI shows now and then)."""
+    window = widget.window()
+    if not window.isActiveWindow():
+        window.raise_()
+        window.activateWindow()
+        pump(0.2)
+
+
 def real_click(widget: QWidget, expect_disabled: bool = False, settle: bool = True) -> None:
     """A left click at the centre of the widget through Qt's event queue (QTest). A widget a person could not click fails; a greyed-out
     one is clicked only with `expect_disabled` (the click must then do nothing)."""
@@ -384,6 +394,7 @@ def real_click(widget: QWidget, expect_disabled: bool = False, settle: bool = Tr
     if problem:
         name = widget.text() if hasattr(widget, "text") else type(widget).__name__
         raise AssertionError("%s %r cannot be clicked: %s" % (type(widget).__name__, name, problem))
+    ready_for_click(widget)
     QTest.mouseClick(widget, Qt.MouseButton.LeftButton, pos=widget.rect().center())
     if settle:
         pump(0.1)
