@@ -486,6 +486,8 @@ def press_with_modal(
     EXPECT_DIALOG[0] = True
     try:
         press()
+        # a button's popup menu blocks `press` in exec() on Windows and Linux, but is only shown on macOS: the finder then runs here
+        until(lambda: "value" in box or "error" in box, timeout)
     finally:
         EXPECT_DIALOG[0] = False
         timer.stop()
