@@ -50,7 +50,6 @@ jobs:
     timeout-minutes: 45
     name: test (${{ matrix.os }}, ${{ matrix.qt }})
     strategy:
-      fail-fast: false   # as on Linux: one failing job must not hide the result of the others
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
