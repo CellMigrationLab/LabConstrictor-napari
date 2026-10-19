@@ -460,7 +460,10 @@ def press_with_modal(
     timer = QTimer()
     end = time.time() + timeout
 
+    looks = [0]  # how often the finder ran: none means the event loop never ran while `press` was blocked
+
     def look() -> None:
+        looks[0] += 1
         dialog = QApplication.activeModalWidget() or QApplication.activePopupWidget()
         if dialog is None:
             if time.time() > end:
@@ -489,7 +492,10 @@ def press_with_modal(
     if "error" in box:
         raise AssertionError(box["error"])
     if "value" not in box:
-        raise AssertionError("the control opened no dialog or popup")
+        raise AssertionError(
+            "the control opened no dialog or popup (the finder ran %d times; active window: %s; visible windows: %s)"
+            % (looks[0], type(QApplication.activeWindow()).__name__, class_names(visible_windows()))
+        )
     return box["value"]
 
 
