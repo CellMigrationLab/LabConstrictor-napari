@@ -12,7 +12,9 @@ import _paths  # noqa: F401  (must come first)
 import napari
 import numpy as np
 from _paths import EVIDENCE
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QLabel
+
+from napari_labconstrictor._widget import SLIDER_VALUE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -85,10 +87,38 @@ expect(
     (g["level"].min, g["level"].max, g["count"].max),
 )
 
+
+def slider_value(name: str) -> "tuple[bool, str, int, int]":
+    """The label beside slider `name`: visible, its text, its width and the width its text needs (Qt 6.12 drew no number, issue #70)."""
+    label = g[name].native.findChild(QLabel, SLIDER_VALUE)
+    if label is None:
+        return False, "", 0, 0
+    return label.isVisible(), label.text(), label.width(), label.fontMetrics().horizontalAdvance(label.text())
+
+
+box = g["level"]._widget._readout_widget.lineEdit()
+for name in ("level", "count"):
+    shown, text, width, needed = slider_value(name)
+    expect(
+        "slider_value_shown_%s" % name,
+        shown and text != "" and width >= needed,
+        (shown, text, width, needed),
+    )
+expect(
+    "slider_value_is_the_readout_text",
+    slider_value("level")[1] == box.text(),
+    (slider_value("level"), box.text()),
+)
+
 g["level"].value = 0.8
 g["count"].value = 7
 g["mode"].value = "c"
 pump(0.3)
+expect(
+    "slider_value_follows_the_slider",
+    slider_value("level")[1] == box.text() and "8" in box.text() and slider_value("count")[1] == "7",
+    (slider_value("level"), box.text(), slider_value("count")),
+)
 w.last_task = None
 g()
 until(lambda: w.last_task is not None and w.task is w.last_task)
