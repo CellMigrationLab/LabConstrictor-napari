@@ -1403,7 +1403,7 @@ class LabConstrictorWidget(QWidget):
         """
         if getattr(task, "code", None) != "wrong_dimensions" or self.tool is None or self.gui is None:
             return ""
-        for param in cast(Tool, self.tool)["inputs"]:
+        for param in self.tool["inputs"]:
             name, axes = param["name"], param.get("axes")
             source = self.file_sources.get(name)
             if not param.get("pick_channel") or not axes or source is None or _is_set(source.value):
