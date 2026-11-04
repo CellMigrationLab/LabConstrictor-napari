@@ -52,7 +52,7 @@ Before anything runs, `<LC_SHOTS>/expected_napari_<app>.json` (a JSON list) hold
 control, every tool x opens, controls, run, screens, and with `LC_APPS` the multi ids). `<LC_SHOTS>/matrix_ui_napari_<app>.json` is
 rewritten atomically (temp file, then `os.replace`) after every single row (the schema of `tests/oneoff_2026-10/matrix.py` of the Tools repo):
 
-    {"host": "napari", "app": "...", "family": "ui", "host_version": "0.1.0a1" | "0.1.0a1+git.<sha> (editable checkout)", "started": "...Z", "finished": null | "...Z", "expected": <count of ids>,
+    {"host": "napari", "app": "...", "family": "ui", "host_version": "0.1.0a5" | "0.1.0a5.dev0+git.<sha> (editable checkout)", "started": "...Z", "finished": null | "...Z", "expected": <count of ids>,
      "rows": [{"id", "family", "host", "app", "tool", "control", "status": "PASS|FAIL|NOT_RUN|HUMAN", "detail", "seconds",
                "screenshot": path | null, "ts"}]}
 
