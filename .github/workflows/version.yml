@@ -1,0 +1,14 @@
+name: version
+# A release tag must name the version the package reports (issue #73): `v0.1.0-alpha.5` needs version = "0.1.0a5" in pyproject.toml,
+# or `pip show napari-labconstrictor` cannot tell which release is installed. Set the version, merge, then tag.
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  tag-matches-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python scripts/check_version.py "${{ github.ref_name }}"

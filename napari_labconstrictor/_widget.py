@@ -1421,6 +1421,30 @@ class LabConstrictorWidget(QWidget):
             return None
         return list(box.choices).index(box.value)
 
+    def _channel_hint(self, task: Any) -> str:
+        """A sentence for a `wrong_dimensions` refusal whose PickChannel image came from a layer with one plane too many (issue #71).
+
+        A plain layer does not say which of its axes holds the channels (it could be Z or T), so no chooser is offered for it; the
+        chooser comes with the file, whose tags name the C axis. The refusal alone did not say so. Empty when this does not apply.
+        """
+        if getattr(task, "code", None) != "wrong_dimensions" or self.tool is None or self.gui is None:
+            return ""
+        for param in self.tool["inputs"]:
+            name, axes = param["name"], param.get("axes")
+            source = self.file_sources.get(name)
+            if not param.get("pick_channel") or not axes or source is None or _is_set(source.value):
+                continue
+            layer = self.gui[name].value
+            if layer is not None and not getattr(layer, "rgb", False) and layer.ndim == len(axes) + 1:
+                return (
+                    "To choose a channel of '%s', choose its file in 'or file' instead of the layer (%d planes)."
+                    % (
+                        param["label"],
+                        layer.data.shape[0],
+                    )
+                )
+        return ""
+
     def _set_running(self, running: bool) -> None:
         # the run owns the worker: lookups wait until it ends (SPEC_WRONG_SCIENCE 5.5)
         self._lookups.hold(running)
@@ -1480,7 +1504,8 @@ class LabConstrictorWidget(QWidget):
             self._record_run(task)
             self._workers.release(self._run_app, self.worker, keep=self.reuse_box.isChecked() and healthy)
             _retention.discard_job_dir(self._job_dir)  # the host's own temporary folder (outside LC_HOME)
-            self.status.setText(_unfinished_text(task))
+            hint = self._channel_hint(task)
+            self.status.setText(_unfinished_text(task) + ("\n" + hint if hint else ""))
             self._end_markers(tools_runs.done_status(task.status, getattr(task, "cancel_requested", False)))
             return
         summaries, withheld = self._show_results(
