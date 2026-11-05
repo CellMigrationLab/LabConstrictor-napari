@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "napari-labconstrictor"
-version = "0.1.0a1"
+version = "0.1.0a5.dev0"   # the next release's version with .dev0 between releases; at release: the tag's version (scripts/check_version.py, version.yml)
 description = "Run installed LabConstrictor apps from napari (one generic widget, forms generated from each tool's schema)"
 readme = "README.md"
 license = { text = "MIT" }

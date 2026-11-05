@@ -96,6 +96,22 @@ for index, colour in enumerate(["Red", "Green", "Blue"]):
         "mean=%d" % (10 * (index + 1)) in w.status.text() and "32 x 32" in w.status.text(),
         w.status.text(),
     )
+layer_three = v.add_image(three, name="three planes")
+pump(0.3)
+w.gui.image.value = layer_three
+pump(0.4)
+expect("plain_layer_with_planes_has_no_chooser", not shown(box))
+run()
+text = w.status.text()
+expect(
+    "plain_layer_with_planes_is_refused_with_a_hint_to_choose_the_file",
+    "wrong_dimensions" in text and "choose its file in 'or file'" in text and "3 planes" in text,
+    text,
+)
+w.gui.image.value = layer_flat
+pump(0.4)
+run()
+expect("the_hint_goes_with_the_next_run", "or file" not in w.status.text(), w.status.text())
 w.file_sources["image"].value = work / "three.tif"
 pump(0.6)
 expect(
