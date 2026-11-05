@@ -114,7 +114,9 @@ jobs:
       # the real napari, magicgui and Qt (PyQt6, the recommended backend) are installed on purpose, so mypy checks our calls against
       # their typed signatures; nothing is run and no display is needed. napari[pyqt6] brings PyQt6 and its Qt exclusions.
       # The pins are the versions the code was checked against: raise them together
+      # PyQt6 < 6.12: the 6.12.0 stubs do not parse (QtGui.pyi:4860, `def drawConvexPolygon(self, point, *args, /)`: "/ must be ahead
+      # of *"), so mypy stopped before checking anything (red on main since 1 Nov 2026). Remove the cap once PyQt6 ships parsable stubs.
       - run: >
-          pip install mypy==1.20.2 "napari[pyqt6]==0.9.2" magicgui==0.10.2 qtpy==2.4.3
+          pip install mypy==1.20.2 "napari[pyqt6]==0.9.2" "PyQt6<6.12" magicgui==0.10.2 qtpy==2.4.3
           "${{ env.LC_TOOLS_SPEC }}" -e .
       - run: mypy   # the package, the tests and the scripts (paths and settings: [tool.mypy] in pyproject.toml)
