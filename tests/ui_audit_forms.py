@@ -335,7 +335,7 @@ def unexplained(ctx: AppCtx, tool: dict[str, Any]) -> list[str]:
         for group in (w.file_sources, w.channel_boxes, w.unset_toggles, w.region_toggles, w._choice_boxes)
         for x in group.values()
     }  # noqa: SLF001
-    known |= {id(w.gui.call_button), id(w.advanced_toggle)}
+    known |= {id(w.advanced_toggle)}
     known |= {id(b) for b in getattr(w, "_group_heading", {}).values()}
     inert = ("Label", "Container", "EmptyWidget")
     out = []

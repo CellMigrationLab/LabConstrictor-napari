@@ -27,7 +27,6 @@ from ui_audit_core import (
     pump,
     real_click,
     sanitise,
-    scroll_to,
     shoot,
     until,
     windows_problem,
@@ -252,11 +251,10 @@ def execute(
     w._discard_job_dir = read_files_then_discard  # noqa: SLF001
     try:
         before = w.task
-        button = w.gui.call_button
-        scroll_to(w, button.native)
-        real_click(button.native, settle=False)
+        button = w.run_button  # under the form, always in view (#72): no scrolling first
+        real_click(button, settle=False)
         obs.started = w.task is not None and w.task is not before
-        obs.disabled_while_running = not button.enabled
+        obs.disabled_while_running = not button.isEnabled()
         task = w.task
         obs.ended_before_looked = not obs.disabled_while_running and task is not None and task.done.is_set()
         if not obs.started:
@@ -277,7 +275,7 @@ def execute(
         w._signals.progress.disconnect(count)  # noqa: SLF001
         w._discard_job_dir = discard  # noqa: SLF001
     obs.progress_events = len(ticks)
-    obs.enabled_after = bool(button.enabled)
+    obs.enabled_after = bool(button.isEnabled())
     obs.status_text, obs.task_status = w.status.text(), task.status
     obs.worker_kept = bool(w._workers._workers.get(ctx.app))  # noqa: SLF001
     ctx.runs.append(obs)

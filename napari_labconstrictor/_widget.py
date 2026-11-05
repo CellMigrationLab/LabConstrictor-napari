@@ -132,6 +132,17 @@ class _Signals(QObject):
 # the cast is a no-op at run time (the behaviour on None is unchanged).
 
 
+def _mix(rgb: tuple[int, ...], towards: tuple[int, int, int], fraction: float) -> tuple[int, int, int]:
+    """`rgb` moved `fraction` of the way to `towards` (white: a lighter shade, black: a darker one)."""
+    r, g, b = (round(c + (t - c) * fraction) for c, t in zip(rgb[:3], towards, strict=True))
+    return r, g, b
+
+
+def _css_rgb(rgb: tuple[int, ...]) -> str:
+    """A Qt style sheet colour, written as napari's theme colours are (`rgb(69, 96, 196)`)."""
+    return "rgb(%d, %d, %d)" % tuple(rgb[:3])
+
+
 class LabConstrictorWidget(QWidget):
     """The one dock widget: owns the form of the chosen tool and the state of the run in progress (task, worker, job folder).
 
@@ -226,6 +237,7 @@ class LabConstrictorWidget(QWidget):
         self._lookup_note = (
             ""  # the status line text a lookup problem put there (so that the next one replaces it)
         )
+        self._running = False  # a run is in progress (set by _set_running): Run is greyed out
         self._shut_down = False  # True while closeEvent runs: nothing is started or applied meanwhile
         self._was_closed = False  # closeEvent ran: the next showEvent asks the dropped questions again
         self._run_thread: threading.Thread | None = None
@@ -243,6 +255,7 @@ class LabConstrictorWidget(QWidget):
         for widget in (self.app_box.native, self.tool_box.native, self.description):
             layout.addWidget(widget)
         layout.addWidget(self._build_form_area(), 1)
+        layout.addLayout(self._run_row())
         layout.addWidget(self.bar)
         layout.addWidget(self._build_outcome_area(), 1)
         layout.addWidget(self.reuse_box)
@@ -267,6 +280,11 @@ class LabConstrictorWidget(QWidget):
         self.message_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.message_label.setStyleSheet("QLabel { border-left: 3px solid #5a9fd4; padding: 4px 8px; }")
         self.message_label.setVisible(False)
+        # Run is the host's own button, outside the scrolling form, so it is always in view (#72); Cancel sits beside it
+        self.run_button = QPushButton("Run")
+        self.run_button.setObjectName("labconstrictorRunButton")
+        self.run_button.setToolTip("Run the tool with the values in the form")
+        self.run_button.setEnabled(False)  # until a form is shown
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.rescan_button = QPushButton("Rescan apps")
@@ -296,10 +314,40 @@ class LabConstrictorWidget(QWidget):
 
         return copy
 
+    def _run_row(self) -> QHBoxLayout:
+        """Run (wide, in the theme's highlight colour: the main action) and Cancel, the two buttons of a run, under the form."""
+        row = QHBoxLayout()
+        row.addWidget(self.run_button, 1)
+        row.addWidget(self.cancel_button)
+        self._style_run_button()
+        return row
+
+    def _style_run_button(self, *_: Any) -> None:
+        """Colour Run with the napari theme's `current` colour (the one napari uses to highlight a Qt widget), so it reads as the
+        main action in the dark and the light theme alike. Only the enabled state is coloured: a greyed-out Run keeps napari's
+        disabled look. Hover and press get a lighter and a darker shade, since this rule hides napari's own hover/press colours.
+        """
+        from napari.settings import get_settings
+        from napari.utils.theme import get_theme
+
+        theme_id = self.viewer.theme if self.viewer is not None else get_settings().appearance.theme
+        theme = get_theme(theme_id)
+        base = theme.current.as_rgb_tuple(alpha=False)
+        rule = "QPushButton#labconstrictorRunButton:%s { background-color: %s; color: %s; }"
+        text = theme.text.as_rgb()
+        self.run_button.setStyleSheet(
+            "\n".join(
+                (
+                    rule % ("enabled", _css_rgb(base), text),
+                    rule % ("enabled:hover", _css_rgb(_mix(base, (255, 255, 255), 0.15)), text),
+                    rule % ("enabled:pressed", _css_rgb(_mix(base, (0, 0, 0), 0.15)), text),
+                )
+            )
+        )
+
     def _button_row(self) -> QHBoxLayout:
         buttons = QHBoxLayout()
         for button in (
-            self.cancel_button,
             self.rescan_button,
             self.restart_button,
             self.details_button,
@@ -344,7 +392,10 @@ class LabConstrictorWidget(QWidget):
         return self.outcome_scroll
 
     def _connect_controls(self) -> None:
+        self.run_button.clicked.connect(self._run_clicked)
         self.cancel_button.clicked.connect(self.cancel)
+        if self.viewer is not None:
+            self.viewer.events.theme.connect(self._style_run_button)
         self.details_button.clicked.connect(self._show_details)
         self.rescan_button.clicked.connect(self.rescan)
         self.restart_button.clicked.connect(lambda *_: self._workers.discard(self.app_box.value))
@@ -432,6 +483,7 @@ class LabConstrictorWidget(QWidget):
         self._add_choice_boxes(tool)
         self.gui.native.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.form_holder.insertWidget(0, self.gui.native)
+        self._refresh_run_button()
         self._schedule_choices(0)
         for param in tool["inputs"]:
             if param.get("pixel_size_of"):
@@ -465,6 +517,7 @@ class LabConstrictorWidget(QWidget):
             native.setParent(self)
             native.deleteLater()
             self.gui = None
+            self._refresh_run_button()
             self.file_sources = {}
             self.cal_links, self._cal_refresh, self._cal_commit = {}, {}, {}
             self.unset_toggles = {}
@@ -482,12 +535,8 @@ class LabConstrictorWidget(QWidget):
         signature = signature_from_schema(tool, {"image": Image, "labels": Labels})
         run.__signature__ = signature  # type: ignore[attr-defined]  # typeshed omits __signature__ on functions; magicgui reads it
         run.__name__ = tool["id"]
-        gui: Any = magicgui(
-            run, call_button="Run", persist=False, auto_call=False
-        )  # Any: magicgui types call_button as optional
-        # magicgui re-enables Run when its click handler returns, i.e. right after the run was started: this slot is connected
-        # after magicgui's own, so it runs after it and puts the button back to what the run state says
-        gui.call_button.changed.connect(self._sync_run_button)
+        # no call button: Run is the host's own button under the scrolling form (#72), see _run_clicked
+        gui: Any = magicgui(run, call_button=False, persist=False, auto_call=False)
         return gui
 
     def _add_file_sources(self, tool: Tool) -> dict[str, Any]:
@@ -1458,13 +1507,17 @@ class LabConstrictorWidget(QWidget):
         )  # the form must stay the one that was launched
         self.rescan_button.setEnabled(not running)  # a rescan rebuilds the form under a running task
         self.restart_button.setEnabled(not running)  # and a restart would close the worker that is running it
-        if self.gui is not None:
-            self.gui.call_button.enabled = not running
+        self._running = running
+        self._refresh_run_button()
 
-    def _sync_run_button(self, *_: Any) -> None:
-        """Run is usable exactly when no run is in progress (the widget being closed ends the run)."""
-        running = self.task is not None and not self.task.done.is_set() and not self._closed
-        self.gui.call_button.enabled = not running
+    def _refresh_run_button(self) -> None:
+        """Run is usable exactly when a form is shown and no run is in progress."""
+        self.run_button.setEnabled(self.gui is not None and not self._running)
+
+    def _run_clicked(self, *_: Any) -> None:
+        """Run the form with its current values, as magicgui's own call button did (_launch refuses a second run)."""
+        if self.gui is not None:
+            self.gui()
 
     def cancel(self, *_: Any) -> None:
         if not self.task or self.task.done.is_set():

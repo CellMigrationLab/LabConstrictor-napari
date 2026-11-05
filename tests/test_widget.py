@@ -143,7 +143,7 @@ w.cancel()
 wait(15)
 expect(
     "cooperative_cancel",
-    w.last_task.status == "CANCELED" and time.time() - t0 < 6 and w.gui.call_button.enabled,
+    w.last_task.status == "CANCELED" and time.time() - t0 < 6 and w.run_button.isEnabled(),
     w.last_task.status,
 )
 

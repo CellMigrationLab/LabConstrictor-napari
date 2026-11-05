@@ -193,7 +193,7 @@ expect(
     ("runapp", "stats") in w._docks and w.message_label.isVisible(),
 )
 expect("RUN-04_job_folder_is_gone", not w._job_dir.exists())
-expect("RUN-04_widget_is_usable_after", w.gui.call_button.enabled and w.app_box.enabled)
+expect("RUN-04_widget_is_usable_after", w.run_button.isEnabled() and w.app_box.enabled)
 
 # identity is the object, not the name: a new layer called "A" is not the source
 A, B = fresh()

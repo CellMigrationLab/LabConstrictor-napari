@@ -63,5 +63,5 @@ for tag, text, sentence in [
     expect(tag + "_refused_on_click", w.status.text().lstrip("⚠ ") == sentence.lstrip("⚠ "), w.status.text())
     expect(tag + "_no_task", w.task is before and w.last_task is None, (w.task, w.last_task))
 expect("refusals_started_no_worker", {a: list(i) for a, i in w._workers._workers.items()} == workers_before)
-expect("the_button_is_usable_again", w.gui.call_button.enabled)
+expect("the_button_is_usable_again", w.run_button.isEnabled())
 finish()

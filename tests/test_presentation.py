@@ -65,7 +65,7 @@ w.app_box.value = "presentation"
 pump(0.3)
 w.tool_box.value = "Probe"
 pump(0.5)
-names = [x.name for x in w.gui if getattr(x, "name", None) and x.name != "call_button"]
+names = [x.name for x in w.gui if getattr(x, "name", None)]
 expect("grouped_parameters_are_together", names.index("method") == names.index("mode") + 1, names)
 expect(
     "advanced_parameters_come_last",

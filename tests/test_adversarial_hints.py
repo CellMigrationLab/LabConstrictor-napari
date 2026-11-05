@@ -119,7 +119,7 @@ expect(
     "gave no choices" in w.gui.a.native.toolTip() and "type the value" in w.gui.a.native.toolTip(),
     w.gui.a.native.toolTip(),
 )
-expect("the_form_is_still_usable", w.gui.call_button.enabled)
+expect("the_form_is_still_usable", w.run_button.isEnabled())
 expect(
     "a_default_the_source_does_not_list_is_kept_not_blanked",
     w.gui.mode.value == "x" and w._choice_boxes["mode"].value == "x",
@@ -209,7 +209,7 @@ w.gui.text_length.value = 3000
 run()
 expect(
     "very_long_message_does_not_break_the_dock",
-    w.last_task.status == "COMPLETE" and w.gui.call_button.enabled and w.details_button.isVisible(),
+    w.last_task.status == "COMPLETE" and w.run_button.isEnabled() and w.details_button.isVisible(),
 )
 w.gui.fail.value = True
 run()
