@@ -59,6 +59,7 @@ FORM_MIN_HEIGHT_PX = 180  # the form area never shrinks below this, however smal
 OUTCOME_MIN_HEIGHT_PX = 110  # the status/message box: at least a few lines ...
 OUTCOME_MAX_HEIGHT_PX = 320  # ... and at most this tall (longer text scrolls) so it never squeezes the form
 STDERR_TAIL_CHARS = 3000  # worker output kept in the Details report
+SLIDER_VALUE = "lc_slider_value"  # object name of the label showing a slider's value (_label_readout)
 _FINISH_TEXT = {"CANCELED": "cancelled"}
 CALIBRATION_KEY = (
     "_calibration"  # reserved input (SPEC_WRONG_SCIENCE 2.3.4): per-axis pixel size with provenance
@@ -90,6 +91,30 @@ def _unfinished_text(task: Any) -> str:
     if task.status == "CRASHED" or task.status not in _FINISH_TEXT:
         return _failure_line(first_line)
     return _FINISH_TEXT[task.status]
+
+
+def _label_readout(readout: Any) -> None:
+    """Make a slider's readout box read-only and show its number in a label (named SLIDER_VALUE) put in place of the box.
+
+    Under Qt 6.12 a spin box without arrows whose stylesheet sets a border or padding (magicgui's and napari's both do) gets a 1 px
+    line edit, so the box drew no number (issue #70). The box stays, hidden; the label mirrors its text, so the decimals and the
+    notation are the box's.
+    """
+    edit = readout.lineEdit()
+    edit.setReadOnly(True)
+    label = QLabel(edit.text())
+    label.setObjectName(SLIDER_VALUE)
+    label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    def refresh(*_: object) -> None:
+        label.setText(edit.text())
+
+    # QDoubleSpinBox rewrites its line edit with the edit's signals blocked: its own valueChanged is heard too
+    readout.valueChanged.connect(refresh)
+    edit.textChanged.connect(refresh)
+    layout = readout.parentWidget().layout()
+    layout.insertWidget(layout.indexOf(readout), label)
+    readout.hide()
 
 
 _ZERO_MEANS_CALIBRATION = "0 means: use the image's calibration"
@@ -416,11 +441,12 @@ class LabConstrictorWidget(QWidget):
     def _freeze_slider_readouts(self) -> None:
         """A slider's number box beside it shows the position and takes no typing: a Qt spin box would clamp or round a typed value
         (SPEC_WRONG_SCIENCE 6.2); a person who wants to type a number is given a text field by the tool (no `widget: slider`).
+        The number itself is shown by a label (see _label_readout).
         """
         for widget in self.gui or []:
             readout = getattr(getattr(widget, "_widget", None), "_readout_widget", None)
             if readout is not None:
-                readout.lineEdit().setReadOnly(True)
+                _label_readout(readout)
 
     def _remove_form(self) -> None:
         self._form_gen = next_form_gen()  # a form was destroyed (5.1): every answer on its way is void
