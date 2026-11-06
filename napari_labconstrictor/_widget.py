@@ -36,7 +36,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
-from . import _calibration, _hosts, _lookups, _numbers, _retention, _snapshot
+from . import _calibration, _help, _hosts, _lookups, _numbers, _retention, _snapshot
 from ._calibration import UNSET, USER, Derived, LinkState
 from ._export import ChannelError, channel_file, channel_layout, export_layer, selection_mask
 from ._export import is_set as _is_set
@@ -218,6 +218,8 @@ class LabConstrictorWidget(QWidget):
         self._run_tool: Any = None
         self.timings: dict[str, float] = {}
         self._choice_boxes: dict[str, Any] = {}  # ChoicesFrom parameter -> its dropdown
+        # described parameter -> its ⓘ (two for a ChoicesFrom: one for the text field, one for the dropdown)
+        self.help_markers: dict[str, list[Any]] = {}
         self._choice_latest: dict[str, int] = (
             {}
         )  # parameter -> request_id of its newest question (advanced the moment a dependency changes); older answers are dropped
@@ -481,8 +483,10 @@ class LabConstrictorWidget(QWidget):
         self.region_toggles = self._add_region_toggles(tool)
         self._apply_presentation(tool)
         self._add_choice_boxes(tool)
+        self._add_help_markers(tool)
         self.gui.native.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.form_holder.insertWidget(0, self.gui.native)
+        self._align_labels()
         self._refresh_run_button()
         self._schedule_choices(0)
         for param in tool["inputs"]:
@@ -525,6 +529,7 @@ class LabConstrictorWidget(QWidget):
             self.channel_boxes, self._channel_choices = {}, {}
             self.advanced_toggle, self._members = None, {}
             self._choice_boxes, self._group_members, self._group_heading = {}, {}, {}
+            self.help_markers = {}
 
     def _make_form(self, tool: Tool) -> Any:
         from napari.layers import Image, Labels
@@ -793,6 +798,44 @@ class LabConstrictorWidget(QWidget):
         button = self._group_heading.get(group)
         if button is not None:
             button.text = ("\u25be " if opened else "\u25b8 ") + group
+
+    # ---- input help (Tools #147) ----
+    def _add_help_markers(self, tool: Tool) -> None:
+        """An ⓘ after the label of every input with a description (see _help). Every other labelled row gets an empty slot of the
+        same width, so the fields still line up."""
+        described = {}
+        for p in tool["inputs"]:
+            text = str(p.get("description", "")).strip()
+            if text:
+                described[id(self.gui[p["name"]])] = (p, text)
+                if p["name"] in self._choice_boxes:
+                    described[id(self._choice_boxes[p["name"]])] = (p, text)
+        self.help_markers = {}
+        for widget in list(self.gui):
+            row = widget._labeled_widget()  # magicgui's [label, widget] row; None for a button or check box
+            param, text = described.get(id(widget), (None, ""))
+            label = param["label"] if param else ""
+            if row is not None:
+                button = _help.add_help(row, widget, label, text)
+            elif param is not None:  # a boolean input: a check box, whose own text is its label
+                button = _help.add_help_beside(widget, label, text)
+            else:
+                continue
+            if button is not None and param is not None:
+                self.help_markers.setdefault(param["name"], []).append(button)
+
+    def _align_labels(self) -> None:
+        """magicgui gives every label the width of the widest one as it measures the text, before napari's style reaches the form, so
+        a label can be drawn wider than measured ("Documented": 71 px measured, 83 px drawn on Windows) and its row's ⓘ and field
+        start further right. Called once the form is in the dock: Qt's own width of the styled labels decides.
+        """
+        rows = [row for row in (widget._labeled_widget() for widget in self.gui) if row is not None]
+        for row in rows:
+            row._label_widget.native.ensurePolished()
+        widest = max((row._label_widget.native.sizeHint().width() for row in rows), default=0)
+        for row in rows:
+            if row._label_widget.native.minimumWidth() < widest:
+                row.label_width = widest
 
     # ---- dynamic choices (ChoicesFrom) ----
     def _add_choice_boxes(self, tool: Tool) -> None:

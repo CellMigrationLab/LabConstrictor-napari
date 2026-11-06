@@ -16,6 +16,7 @@ Check that the result includes labels, points, outlines, a table and a message. 
 
 Tool annotations supply ranges, units, choices, checkboxes, file and folder pickers (tables are chosen as CSV files) and optional fields.
 
+- An input with a description has an **ⓘ** after its label. Hover over the ⓘ to read the description; click it to keep it open (it closes at the next click or key). Moving into the input with Tab shows it too. An input without a description has no ⓘ.
 - An optional parameter without a default has a **"set" checkbox**. Unticked, the field is greyed out and the tool receives `None`.
 - Parameters of a `group` sit under a bold heading. `advanced` parameters are behind **Show advanced settings** (closed by default).
 - Settings that do not apply to the current choice (`enabled_when`) are greyed out.
