@@ -13,6 +13,21 @@ from pathlib import Path
 from typing import Any
 
 POLL_S = 2.0
+REPLACE_TRIES, REPLACE_PAUSE_S = 40, 0.05
+
+
+def replace_file(tmp: Path, path: Path) -> None:
+    """`os.replace(tmp, path)`, tried again for up to 2 s while Windows refuses it (PermissionError): the parent's poll below stats the
+    matrix every POLL_S, and on Windows a stat opens the file for a moment, during which the child's replace is "Access is denied"
+    (seen on CI, PR #80). A refusal that lasts longer is raised as before."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(REPLACE_PAUSE_S)
 
 
 def newest_write(shots: Path) -> float:
@@ -57,7 +72,7 @@ def close_after_crash(shots: Path, reason: str, apps: list[str]) -> int:
         doc.setdefault("host_version", "unknown (the audit crashed before it reported it)")
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
-        os.replace(tmp, path)
+        replace_file(tmp, path)
     return added
 
 

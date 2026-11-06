@@ -261,7 +261,7 @@ expect(
 )
 expect("start_failure_job_folder_removed", not w._job_dir.exists())
 expect("start_failure_prune_started", len(R.calls()) == n_calls + 1, len(R.calls()) - n_calls)
-expect("start_failure_form_usable", w.gui.call_button.enabled and w.app_box.enabled)
+expect("start_failure_form_usable", w.run_button.isEnabled() and w.app_box.enabled)
 
 # ---- prune is never a reason for a run to fail, and never blocks the GUI --------------------------------------------------------
 n_before = len(R.folders("runs"))
@@ -289,7 +289,7 @@ for label, command, expected_log in (
         any(expected_log in m for m in logged("the cleanup")),
         records[-5:],
     )
-    expect("HRET-04_failing_prune_%s_form_usable" % label, w.gui.call_button.enabled and w.app_box.enabled)
+    expect("HRET-04_failing_prune_%s_form_usable" % label, w.run_button.isEnabled() and w.app_box.enabled)
 expect("failing_prune_deleted_nothing", len(R.folders("runs")) == n_before + 2)
 
 R.use_recorder()

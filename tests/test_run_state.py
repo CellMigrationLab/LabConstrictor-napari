@@ -199,7 +199,7 @@ expect(
     "is missing" in w.status.text() or "is missing" in w.last_details,
     w.status.text(),
 )
-expect("ui_usable_after_start_failure", w.gui.call_button.enabled and w.app_box.enabled, "")
+expect("ui_usable_after_start_failure", w.run_button.isEnabled() and w.app_box.enabled, "")
 
 w.rescan()
 w.app_box.value = "nomatch"
@@ -215,7 +215,7 @@ while w.last_task is None and time.time() < _deadline:
 pump(0.8)
 expect(
     "no_match_is_a_notice_not_an_error",
-    w.status.text() == "⚠ No match found: try another setting." and w.gui.call_button.enabled,
+    w.status.text() == "⚠ No match found: try another setting." and w.run_button.isEnabled(),
     w.status.text(),
 )
 

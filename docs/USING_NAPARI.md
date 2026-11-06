@@ -19,7 +19,7 @@ Tool annotations supply ranges, units, choices, checkboxes, file and folder pick
 - An optional parameter without a default has a **"set" checkbox**. Unticked, the field is greyed out and the tool receives `None`.
 - Parameters of a `group` sit under a bold heading. `advanced` parameters are behind **Show advanced settings** (closed by default).
 - Settings that do not apply to the current choice (`enabled_when`) are greyed out.
-- A form taller than the dock scrolls; the Run button and the status stay in view.
+- A form taller than the dock scrolls; the **Run** button (with **Cancel** beside it) sits under the form and stays in view, as does the status.
 
 ## Image inputs
 

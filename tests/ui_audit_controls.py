@@ -93,7 +93,7 @@ def enumerate_controls(widget: Any) -> list[Any]:
             old.isAncestorOf(obj) for old in stale
         ):  # a form that was replaced and waits for Qt to delete it (`_remove_form`)
             continue
-        if form is not None and form.isAncestorOf(obj) and obj is not widget.gui.call_button.native:
+        if form is not None and form.isAncestorOf(obj):
             continue
         found.append(obj)
     for menu in widget.findChildren(QMenu):
@@ -418,7 +418,7 @@ def effect_tool_chooser(ctx: AppCtx) -> str:
 
 
 CONTROLS: list[Control] = [
-    Control("run", "magicgui PushButton (the form's call button)", lambda w: w.gui.call_button.native,
+    Control("run", "QPushButton (under the scrolling form)", lambda w: w.run_button,
             "a click starts the task; the button is greyed out while it runs and usable after", effect_run),
     Control("cancel", "QPushButton", lambda w: w.cancel_button, "idle: greyed out; a click or a call changes nothing", effect_cancel),
     Control("rescan_apps", "QPushButton", lambda w: w.rescan_button,

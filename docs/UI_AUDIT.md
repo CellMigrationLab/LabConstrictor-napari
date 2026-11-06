@@ -131,7 +131,7 @@ progress signals).
 
 | Id | Kind | Expected effect (source) |
 |---|---|---|
-| `run` | the form's call button | a click starts the task, the button is greyed out while it runs and usable after (the task, the button). A tool that is over before the button can be looked at (instant, worker warm) shows nothing: the first run still going counts, and when every run was instant the row is `HUMAN` |
+| `run` | the Run button under the scrolling form | a click starts the task, the button is greyed out while it runs and usable after (the task, the button). A tool that is over before the button can be looked at (instant, worker warm) shows nothing: the first run still going counts, and when every run was instant the row is `HUMAN` |
 | `cancel` | `QPushButton` | idle: greyed out; a click or a call changes nothing |
 | `rescan_apps` | `QPushButton` | the registry is read again; the chooser lists apps registered in the files of `LC_HOME`; the choice stays |
 | `restart_worker` | `QPushButton` | the kept worker process ends (the process) |

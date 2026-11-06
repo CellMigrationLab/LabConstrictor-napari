@@ -1,4 +1,6 @@
-"""A form taller than the dock scrolls (advanced settings of a big tool), and the Run button / status stay reachable."""
+"""A form taller than the dock scrolls (advanced settings of a big tool), and the Run button / status stay reachable: Run is
+the host's own button under the scrolling form, beside Cancel, not magicgui's call button at the end of the form (#72).
+"""
 
 import json
 import subprocess
@@ -10,7 +12,7 @@ from pathlib import Path
 import _paths  # noqa: F401  (must come first)
 import napari
 from _paths import EVIDENCE
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QPushButton, QWidget
 
 tools = Path(tempfile.mkdtemp(prefix="lcscroll_"))
 params = "".join(
@@ -53,6 +55,22 @@ def expect(name: str, condition: object, detail: object = "") -> None:
         failures.append("%s %s" % (name, detail))
 
 
+def run_in_view() -> bool:
+    """Run is shown, can be clicked, and no part of it is hidden (a button scrolled away has an empty visible region)."""
+    region = w.run_button.visibleRegion().boundingRect()
+    return bool(
+        w.run_button.isVisible() and w.run_button.isEnabled() and region.size() == w.run_button.size()
+    )
+
+
+def top_in_dock(widget: QWidget) -> int:
+    return int(widget.mapTo(w, widget.rect().topLeft()).y())
+
+
+def middle_in_dock(widget: QWidget) -> int:
+    return int(widget.mapTo(w, widget.rect().center()).y())
+
+
 w.app_box.value = "tall"
 pump(0.3)
 w.tool_box.value = "Tall"
@@ -70,8 +88,30 @@ expect(
     "buttons_stay_in_view",
     w.details_button.isVisible() and w.cancel_button.isVisible() and w.status.isVisible(),
 )
+form_buttons = [b.text() for b in w.form_scroll.widget().findChildren(QPushButton)]
+expect("the_form_has_no_run_button_of_its_own", "Run" not in form_buttons, form_buttons)
+expect("run_is_not_in_the_scrolling_form", not w.form_scroll.isAncestorOf(w.run_button))
+bottom_of_form = top_in_dock(w.form_scroll) + w.form_scroll.height()
+expect(
+    "run_is_under_the_form",
+    top_in_dock(w.run_button) >= bottom_of_form,
+    (top_in_dock(w.run_button), bottom_of_form),
+)
+expect(
+    "cancel_is_beside_run",  # same row: same vertical centre (napari draws a disabled button 2 px taller, with a border)
+    abs(middle_in_dock(w.cancel_button) - middle_in_dock(w.run_button)) <= 1
+    and w.cancel_button.x() > w.run_button.x(),
+    (w.run_button.geometry(), w.cancel_button.geometry()),
+)
+expect("run_in_view_at_the_top_of_a_long_form", run_in_view(), w.run_button.visibleRegion().boundingRect())
+run_top = top_in_dock(w.run_button)
 bar.setValue(bar.maximum())
 pump(0.4)
+expect(
+    "run_in_view_and_still_at_the_end_of_a_long_form",
+    run_in_view() and top_in_dock(w.run_button) == run_top,
+    (w.run_button.visibleRegion().boundingRect(), top_in_dock(w.run_button), run_top),
+)
 last = w.gui["p39"]
 visible_rect = w.form_scroll.viewport().rect()
 top = last.native.mapTo(w.form_scroll.viewport(), last.native.rect().topLeft())

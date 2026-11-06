@@ -114,7 +114,7 @@ expect(
 )
 expect(
     "failed_start_unlocks_form",
-    w.gui.call_button.enabled and w.app_box.enabled and w.rescan_button.isEnabled(),
+    w.run_button.isEnabled() and w.app_box.enabled and w.rescan_button.isEnabled(),
 )
 expect("failed_start_releases_worker", fake.closed)
 expect("failed_start_leaves_no_task", w.task is None)
@@ -143,7 +143,7 @@ expect(
     w.status.text(),
 )
 expect("unshowable_result_removes_temp", not w._job_dir.exists(), str(w._job_dir))
-expect("unshowable_result_unlocks", w.gui.call_button.enabled and w.app_box.enabled)
+expect("unshowable_result_unlocks", w.run_button.isEnabled() and w.app_box.enabled)
 expect("unshowable_result_explained", "cannot draw this result" in w.last_details, w.last_details[:300])
 
 # 3b. a result the presenter itself fails on (it reports instead of raising) is a warning, not a plain success
@@ -205,7 +205,7 @@ pump(0.5)
 tifffile.imwrite = real_imwrite
 expect("export_oserror_explained", "could not prepare the inputs" in w.status.text(), w.status.text())
 expect("export_oserror_removes_temp", input_dirs() == before, input_dirs() - before)
-expect("export_oserror_form_usable", w.gui.call_button.enabled and w.app_box.enabled)
+expect("export_oserror_form_usable", w.run_button.isEnabled() and w.app_box.enabled)
 
 # 6. a nullable yes/no can be left unset (and is then not sent as False)
 pick("hard", "Flag tool")
