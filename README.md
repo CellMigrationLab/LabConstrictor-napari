@@ -76,13 +76,12 @@ In the Python environment you start napari from (**Python 3.11 or newer**; napar
 ```bash
 python -m pip install "napari[pyqt6]" \
   https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.1.zip \
-  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/<NAPARI_TAG>.zip
+  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.4.zip
 ```
 
-- `<NAPARI_TAG>` is a placeholder: use the **latest release tag** of this repository (see its Releases and Tags pages). This repository has no tag and no release yet (checked 14 Oct 2026), and its only workflow is `ci.yml`, so until the first tag exists this line cannot be run as written.
+- `v0.1.0-alpha.4` is the latest release tag of this repository on 6 Nov 2026 (an alpha pre-release): when a newer tag is on its [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page, put that one in the address instead. Never install from `main.zip`.
 - **Qt6 only:** use `napari[pyqt6]` (or `napari[pyside6]`). PyQt5 is not tested here, so avoid `napari[pyqt5]`; napari deprecated it in 0.8.0. The plugin installs no Qt backend of its own: it uses `qtpy` and runs on the one your napari has.
 - **Tools 0.3.0a1 or newer** (tag `v0.3.0-alpha.1`, version `0.3.0a1`) is required in napari's environment: the plugin depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one. The apps you want to run also need Tools 0.3.0a1 or newer to work in Fiji and QuPath (Fiji and QuPath leave out an older app; this plugin only skips the cleanup step for it, and its other behaviour with such an app is not verified). An app released with the older pin `v0.2.0-rc.1` therefore needs a new release first.
-- The tag of Tools, `v0.3.0-alpha.1`, had not been created when this was written (14 Oct 2026); until it exists that address does not resolve.
 
 Why 0.3.0a1: the plugin uses `runs.build_record`, `runs.record_json` and `runs.done_status` to write `run.json` and the done marker exactly as Tools does. Those came in v0.2.0-rc.2, which reports the same version as rc.1 (`0.2.0rc1`), so `pip` requires `labconstrictor-tools>=0.3.0a1`, and the plugin also checks the version and the three functions when it loads.
 
@@ -131,7 +130,7 @@ The widget reads registered LabConstrictor tool manifests. You do not need a new
 
 Try [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground) for a test image, [Guess the Condition](https://github.com/CellMigrationLab/GuessTheCondition) for blinded image classification, [NucleiSky](https://github.com/CellMigrationLab/NucleiSky) for image registration and ROI matching using nuclei constellations, or [VLab4Mic](https://github.com/CellMigrationLab/LabConstrictor-VLab4Mic) for microscopy simulations. These four are the apps meant to be listed in napari. [CellTracksColab](https://github.com/CellMigrationLab/CellTracksColab) is a notebook app that no host lists. See the [Tools repository](https://github.com/CellMigrationLab/LabConstrictor-Tools) for installation links.
 
-Which host lists which app: apps declare the hosts that list them (`hosts:` in their `labconstrictor-app.yaml`); the rule is a binding rule in Tools 0.3.0a1 (feature `app_hosts_v1`; PROTOCOL.md section App hosts); Napari honours it (PR #61 merged, so napari lists only the apps that declare it); Fiji and QuPath honour it once their PRs (#47, #35) merge; installers pass the hosts from template 0.1.18 (template PR #33, not merged).
+Which host lists which app: apps declare the hosts that list them (`hosts:` in their `labconstrictor-app.yaml`); the rule is a binding rule in Tools 0.3.0a1 (feature `app_hosts_v1`; PROTOCOL.md section App hosts); Napari, Fiji and QuPath honour it (napari PR #61, Fiji #47, QuPath #35, all merged), so napari lists only the apps that declare it; installers pass the hosts from template 0.1.18 (template PR #33, merged 14 Oct 2026), and the current release of every app is built with it. An app installed with an older installer declares no hosts and is listed in every host.
 
 These are examples, not a list of applications permitted to connect. Choose tools according to whether they make sense in a layer-based workflow and whether napari provides a useful presentation of their outputs.
 
