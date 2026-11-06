@@ -3,7 +3,6 @@ matrix file that is rewritten after every check, the guarded check (one failure 
 Not a test (CI runs only test_*.py)."""
 
 import json
-import os
 import re
 import sys
 import time
@@ -17,6 +16,7 @@ from typing import Any
 from qtpy.QtCore import QRect, Qt, QTimer
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QWidget
+from ui_audit_watch import replace_file
 
 HOST = "napari"
 FAMILY = "ui"
@@ -153,7 +153,7 @@ class Recorder:
         self.expected += [i for i in ids if i not in self.expected]
         tmp = self.expected_path.with_name(self.expected_path.name + ".tmp")
         tmp.write_text(json.dumps(self.expected, indent=1), encoding="utf-8")
-        os.replace(tmp, self.expected_path)
+        replace_file(tmp, self.expected_path)
         self._write()
 
     def _write(self) -> None:
@@ -169,7 +169,7 @@ class Recorder:
         }
         tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
-        os.replace(tmp, self.path)
+        replace_file(tmp, self.path)
 
     def add(
         self, cid: str, status: str, detail: object, tool: str = "", control: str = "", seconds: float = 0.0,
