@@ -42,7 +42,12 @@ def fixture_scale(path: Path) -> tuple[float, float]:
 
 
 def fixture_shape(path: Path) -> tuple[int, int]:
+    """(height, width) of a TIFF fixture, found by the axis letters: an RGB file (axes YXS, shape (h, w, 3)) is h x w, not w x 3."""
     with tifffile.TiffFile(path) as tif:
+        series = tif.series[0]
+        axes, shape = series.axes, series.shape
+        if "Y" in axes and "X" in axes:
+            return int(shape[axes.index("Y")]), int(shape[axes.index("X")])
         return tuple(tif.pages[0].shape[-2:])  # type: ignore[return-value]
 
 
