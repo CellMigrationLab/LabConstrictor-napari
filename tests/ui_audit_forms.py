@@ -233,6 +233,23 @@ def _rule_satisfied(ctx: AppCtx, tool: dict[str, Any], param: dict[str, Any]) ->
         pump(0.1)
 
 
+@contextmanager
+def _set_box_ticked(ctx: AppCtx, param: dict[str, Any]) -> Iterator[None]:
+    """While inside, the 'set' box of an optional value (if it has one) is ticked; it is put back."""
+    toggle = ctx.host.widget.unset_toggles.get(param["name"])
+    if toggle is None:
+        yield
+        return
+    start = toggle.value
+    toggle.value = True
+    pump(0.05)
+    try:
+        yield
+    finally:
+        toggle.value = start
+        pump(0.05)
+
+
 def _toggles(ctx: AppCtx, tool: dict[str, Any], param: dict[str, Any]) -> list[str]:
     """The 'set' box of an optional value and the 'use the selection' box of a region."""
     w, name, notes = ctx.host.widget, param["name"], []
@@ -381,7 +398,10 @@ def form_controls(ctx: AppCtx, tool: dict[str, Any]) -> str:
             elif kind in ("image", "labels"):
                 note = _layer_input(ctx, param, widget)
             else:
-                note = _path(ctx, param, widget)
+                # a path whose field is greyed by its enabled_when rule or its 'set' box (StarDist2D's model_folder: only with
+                # Model = 'Custom model folder') is browsed with both allowing it, as a person must
+                with _rule_satisfied(ctx, tool, param), _set_box_ticked(ctx, param):
+                    note = _path(ctx, param, widget)
             note = "; ".join([note, *_toggles(ctx, tool, param)])
             if param.get("enabled_when"):
                 note += "; " + _enabled_when(ctx, tool, param)
