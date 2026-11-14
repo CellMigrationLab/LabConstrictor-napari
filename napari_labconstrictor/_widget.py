@@ -437,6 +437,8 @@ class LabConstrictorWidget(QWidget):
         self.apps, not_listed = _hosts.listed_entries(
             usable
         )  # the hosts rule: an app that excludes napari is not offered
+        # an app that needs a newer napari plugin stays listed; its sentence shows with its tools, and "refuse" blocks Run
+        self._requirements = _hosts.requirement_notes(self.apps)
         self.timings["discovery_ms"] = (time.perf_counter() - started) * 1000
         self.app_box.choices = sorted(self.apps) or ["(none registered)"]
         self._on_app_changed()
@@ -459,6 +461,9 @@ class LabConstrictorWidget(QWidget):
     # ---- form ---------------------------------------------------------
     def _on_tool_changed(self, *_: Any) -> None:
         self.status.setText("")  # a note belongs to the tool that caused it
+        need = getattr(self, "_requirements", {}).get(self.app_box.value)
+        if need:  # the app asks for a newer napari plugin (host_requirements): say so with each of its tools
+            self.status.setText(("✖ " if need[0] == "refuse" else "⚠ ") + need[1])
         self._lookup_note = ""
         self._remove_form()
         tool = self.tool
@@ -1559,6 +1564,10 @@ class LabConstrictorWidget(QWidget):
 
     def _run_clicked(self, *_: Any) -> None:
         """Run the form with its current values, as magicgui's own call button did (_launch refuses a second run)."""
+        need = getattr(self, "_requirements", {}).get(self.app_box.value)
+        if need and need[0] == "refuse":  # host_requirements with required: true, and this plugin is too old
+            self.status.setText("✖ " + need[1])
+            return
         if self.gui is not None:
             self.gui()
 
