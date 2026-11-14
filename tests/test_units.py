@@ -321,7 +321,10 @@ class ImageJEscapedUnit(unittest.TestCase):
             metadata={"unit": "\\u00B5m"},
         )
         self.assertEqual(_units.microns_yx_from_tiff(path), (0.02, 0.02))
-        self.assertEqual(tifffile.TiffFile(path).imagej_metadata["unit"], "\\u00B5m")
+        with tifffile.TiffFile(
+            path
+        ) as tif:  # closed here: an open file collected later can break an import on Python 3.11
+            self.assertEqual(tif.imagej_metadata["unit"], "\\u00B5m")
 
 
 class Conformance(unittest.TestCase):
