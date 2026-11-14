@@ -2,7 +2,8 @@
 
 Three apps are registered with --app-manifest: one that needs a napari plugin 99.0 (a warning), one that needs it with
 required: true (a refusal), and one this plugin satisfies. All three stay listed. Choosing a tool of the first shows the warning
-in the status line; Run on the second is refused with its sentence and starts nothing; the third says nothing."""
+in the status line; Run on the second is refused with its sentence and starts nothing; the third says nothing.
+"""
 
 import json
 import subprocess
