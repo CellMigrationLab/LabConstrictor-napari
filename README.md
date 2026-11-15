@@ -75,17 +75,19 @@ In the Python environment you start napari from (**Python 3.11 or newer**; napar
 
 ```bash
 python -m pip install "napari[pyqt6]" \
-  https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.1.zip \
-  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.4.zip
+  https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip \
+  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.5.zip
 ```
 
-- `v0.1.0-alpha.4` is the latest release tag of this repository on 6 Nov 2026 (an alpha pre-release): when a newer tag is on its [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page, put that one in the address instead. Never install from `main.zip`.
+- `v0.1.0-alpha.5` is an alpha pre-release: take the newest tag on the [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page and put it in the address. Never install from `main.zip`.
 - **Qt6 only:** use `napari[pyqt6]` (or `napari[pyside6]`). PyQt5 is not tested here, so avoid `napari[pyqt5]`; napari deprecated it in 0.8.0. The plugin installs no Qt backend of its own: it uses `qtpy` and runs on the one your napari has.
-- **Tools 0.3.0a1 or newer** (tag `v0.3.0-alpha.1`, version `0.3.0a1`) is required in napari's environment: the plugin depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one. The apps you want to run also need Tools 0.3.0a1 or newer to work in Fiji and QuPath (Fiji and QuPath leave out an older app; this plugin only skips the cleanup step for it, and its other behaviour with such an app is not verified). An app released with the older pin `v0.2.0-rc.1` therefore needs a new release first.
+- **Tools 0.3.0a1 or newer** is required in napari's environment: the plugin depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one. Install `v0.3.0-alpha.2` (version `0.3.0a2`) as above: host requirements (below) are checked only with Tools 0.3.0a2 or newer. The apps you want to run also need Tools 0.3.0a1 or newer to work in Fiji and QuPath (Fiji and QuPath leave out an older app; this plugin only skips the cleanup step for it, and its other behaviour with such an app is not verified). An app released with the older pin `v0.2.0-rc.1` therefore needs a new release first.
 
 Why 0.3.0a1: the plugin uses `runs.build_record`, `runs.record_json` and `runs.done_status` to write `run.json` and the done marker exactly as Tools does. Those came in v0.2.0-rc.2, which reports the same version as rc.1 (`0.2.0rc1`), so `pip` requires `labconstrictor-tools>=0.3.0a1`, and the plugin also checks the version and the three functions when it loads.
 
 **Which apps are listed:** napari lists an app only if the app declares napari in its `hosts` (registry entry field, feature `app_hosts_v1`, rule `labconstrictor_tools.app_hosts.listed_for`). An app that leaves napari out, or whose declaration is not valid, is not offered; the widget says so in its "skipped" line and the sentence is written to the Tools log. An app with no declaration is still listed, and the log says `declares no hosts` each time the list is read. This needs Tools 0.3.0a1 with the feature `app_hosts_v1`; the plugin refuses to load without it.
+
+**Host requirements:** an app can declare the oldest napari plugin it needs (`host_requirements`, host feature `host_requirements_v1`, checked with Tools 0.3.0a2 or newer). When this plugin is older, the app stays listed and a warning is shown with its tools and written to the Tools log; when the requirement says `required: true`, Run is refused for that app until you install a newer plugin tag.
 
 Neither is on PyPI yet. These are source archives, so no `git` program is needed (with git you can use `git+https://github.com/CellMigrationLab/<repository>` instead).
 
@@ -130,7 +132,7 @@ The widget reads registered LabConstrictor tool manifests. You do not need a new
 
 Try [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground) for a test image, [Guess the Condition](https://github.com/CellMigrationLab/GuessTheCondition) for blinded image classification, [NucleiSky](https://github.com/CellMigrationLab/NucleiSky) for image registration and ROI matching using nuclei constellations, or [VLab4Mic](https://github.com/CellMigrationLab/LabConstrictor-VLab4Mic) for microscopy simulations. These four are the apps meant to be listed in napari. [CellTracksColab](https://github.com/CellMigrationLab/CellTracksColab) is a notebook app that no host lists. See the [Tools repository](https://github.com/CellMigrationLab/LabConstrictor-Tools) for installation links.
 
-Which host lists which app: apps declare the hosts that list them (`hosts:` in their `labconstrictor-app.yaml`); the rule is a binding rule in Tools 0.3.0a1 (feature `app_hosts_v1`; PROTOCOL.md section App hosts); Napari, Fiji and QuPath honour it (napari PR #61, Fiji #47, QuPath #35, all merged), so napari lists only the apps that declare it; installers pass the hosts from template 0.1.18 (template PR #33, merged 14 Oct 2026), and the current release of every app is built with it. An app installed with an older installer declares no hosts and is listed in every host.
+Which host lists which app: apps declare the hosts that list them (`hosts:` in their `labconstrictor-app.yaml`; Tools feature `app_hosts_v1`, PROTOCOL.md section App hosts). napari, Fiji and QuPath list only the apps that declare them; an app installed with an older installer declares no hosts and is listed in every host.
 
 These are examples, not a list of applications permitted to connect. Choose tools according to whether they make sense in a layer-based workflow and whether napari provides a useful presentation of their outputs.
 
@@ -141,7 +143,7 @@ The widget lives in `napari_labconstrictor/_widget.py`, with schema conversion i
 Install one Qt backend per environment, through its test extra (never both in one environment), and LabConstrictor-Tools:
 
 ```bash
-python -m pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.1.zip
+python -m pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip
 python -m pip install -e ".[test-pyqt6]"      # or ".[test-pyside6]"
 cd tests
 python test_units.py
@@ -171,7 +173,7 @@ CI runs PySide6 and PyQt6 on Linux, Windows and macOS (`LC_EXPECT_QT` makes `tes
 
 `mypy` (no arguments; the `[tool.mypy]` section of `pyproject.toml` lists the paths) runs `disallow_untyped_defs` and `disallow_incomplete_defs` on all three, in the typecheck job, with napari, magicgui and Qt installed so the calls are checked against their signatures. The test scripts are checked for everything except the error codes listed in the single `[[tool.mypy.overrides]]` block of `pyproject.toml`, which says why each code is off; a new `tests/*.py` is added to the module list there (a file left out is checked with every code). Rules for annotation edits in tests: no new runtime import (a name needed only for a type goes under `if TYPE_CHECKING:` and the annotation is a string), no `from __future__ import annotations` in a file that lacks it (it would turn the annotations of functions that magicgui or the tools introspect into strings), no blanket `Any` where a real type exists, and a `# type: ignore[code]` only with the reason on the same line. `python scripts/verify_annotation_only.py [--base origin/main]` is the proof that such a change touched annotations and nothing else: it removes annotations and the `TYPE_CHECKING` scaffolding from the old and the new version of every changed `.py` file and compares the two with `ast.dump`.
 
-Under a PyQt binding each test script leaves through `os._exit` (`_leave` in `tests/_paths.py`): PyQt's own exit handler crashed the interpreter with a napari window open after the verdict was printed (measured on Linux with PyQt6 6.11 and napari 0.9.2: 37 of 60 runs of one script; PySide6 6.12: 0 of 60). This is a test-harness workaround only; the exit code still carries the verdict, and `_leave` makes that true by waiting for the `prune` watcher threads of the widget before `os._exit` (a process that ends while a thread is inside `CreateProcess` dies with an access violation on Windows after printing `FAILURES: none`; `tests/test_harness_exit.py` and `tests/test_retention_exit.py` check it). The same `os._exit` is used under PySide6 on Python below 3.12, for a different reason: PySide6 6.12.0 loses one reference to `None` on every void Qt call (`sys.getrefcount(None)` falls by one per `setText`, `setVisible`, `processEvents`, `QTableWidget.setItem`, ...), so a test with enough Qt calls aborts in interpreter finalisation (`none_dealloc`, exit 134) after printing its verdict; it showed up as three failing PySide6 scripts on Linux in the CI of the coordinate-frame PR. Python 3.12 made `None` immortal and is not affected. A table of about 100 000 cells filled cell by cell (`MAX_TABLE_ROWS`) can hit the same limit while it is being made on PySide6 + Python 3.11; that is not changed here.
+Under PyQt (and PySide6 on Python below 3.12) each test script leaves through `os._exit` (`_leave` in `tests/_paths.py`) after waiting for the widget's `prune` threads, because the bindings can crash in interpreter shutdown after the verdict is printed; the exit code still carries the verdict.
 
 Related projects: [Tools](https://github.com/CellMigrationLab/LabConstrictor-Tools) · [Fiji](https://github.com/CellMigrationLab/LabConstrictor-Fiji) · [QuPath](https://github.com/CellMigrationLab/LabConstrictor-QuPath) · [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground).
 

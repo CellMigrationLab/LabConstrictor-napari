@@ -11,17 +11,17 @@ One dock widget shows every installed LabConstrictor app. You pick an app and a 
 
 - [napari](https://napari.org), in a Python environment with **Python 3.11 or newer**.
 - napari version: the project's automated type check runs against napari 0.9.2 and magicgui 0.10.2 (a type check only: napari is not run there). The automated tests (PySide6 and PyQt6 on Linux, Windows and macOS) install whichever napari version pip picks. Use a Qt6 backend: `pip install "napari[pyqt6]"` or `"napari[pyside6]"` (not PyQt5).
-- At least one LabConstrictor app installed on your computer (the [apps that work in napari](https://labconstrictor.cellmig.org/apps/?host=napari) are listed in the App Centre: apps declare which hosts list them in `hosts:` of their `labconstrictor-app.yaml`; the rule is a binding rule in Tools 0.3.0a1 (feature `app_hosts_v1`; PROTOCOL.md section App hosts); Napari, Fiji and QuPath honour it (napari PR #61, Fiji #47, QuPath #35, all merged); installers pass the hosts from template 0.1.18 (template PR #33, merged 14 Oct 2026), and the current release of every app is built with it). Installing the app and installing this plugin are two separate steps: the app's installer registers it on your computer, which is how the plugin finds it.
+- At least one LabConstrictor app installed on your computer (the [apps that work in napari](https://labconstrictor.cellmig.org/apps/?host=napari) are listed in the App Centre: apps declare which hosts list them in `hosts:` of their `labconstrictor-app.yaml`, and napari lists only the apps that declare it). Installing the app and installing this plugin are two separate steps: the app's installer registers it on your computer, which is how the plugin finds it.
 
 ## Install
 
 Run these commands in the same environment you start napari from. If you start napari from a terminal after `conda activate <name>` (or after activating a virtual environment), activate that environment first. If you installed napari with its desktop installer, follow [napari](https://napari.org)'s instructions for adding packages to that installation. Then install the tools runtime and the plugin:
 
     pip install "napari[pyqt6]" \
-      https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.1.zip \
-      https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.4.zip
+      https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip \
+      https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.5.zip
 
-`v0.1.0-alpha.4` is the latest release tag of this repository on 6 Nov 2026 (an alpha pre-release): when a newer tag is on its [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page, put that one in the address instead. Never install from `main.zip`. These are source archives, so you do not need `git`. Use a **Qt6** backend (`napari[pyqt6]` or `napari[pyside6]`); PyQt5 is not tested. The plugin needs LabConstrictor-Tools 0.3.0a1 or newer (it depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one), and so do the apps you run in Fiji and QuPath. The full install page for apps and hosts is [Tools `docs/INSTALL.md`](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/INSTALL.md), and the testing form is the [record sheet](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/HUMAN_TEST_PROTOCOL.md#0-record-sheet-the-test-set-fill-in-before-you-start). Restart napari.
+`v0.1.0-alpha.5` is an alpha pre-release: take the newest tag on the [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page and put it in the address. Never install from `main.zip`. These are source archives, so you do not need `git`. Use a **Qt6** backend (`napari[pyqt6]` or `napari[pyside6]`); PyQt5 is not tested. The plugin needs LabConstrictor-Tools 0.3.0a1 or newer (it depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one), and so do the apps you run in Fiji and QuPath; host requirements (below) are checked with Tools 0.3.0a2 or newer. The full install page for apps and hosts is [Tools `docs/INSTALL.md`](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/INSTALL.md), and the testing form is the [record sheet](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/HUMAN_TEST_PROTOCOL.md#0-record-sheet-the-test-set-fill-in-before-you-start). Restart napari.
 
 ## Open it
 
@@ -32,6 +32,7 @@ A first run needs an installed LabConstrictor app that declares tools. If none i
 - Image inputs take an open layer or a file (a chosen file wins). TIFF and OME-TIFF always work; other formats work if the app has `imageio`.
 - Results appear as layers, a table, or in the status line. A tool that finds nothing shows a notice, not an error.
 - A progress bar and a Cancel button are there while a tool runs.
+- An app can declare the oldest napari plugin it needs (`host_requirements`). If yours is older, a warning is shown with the app's tools; if the app marks it as required, Run is refused until you install a newer plugin tag.
 
 ## If something does not work
 

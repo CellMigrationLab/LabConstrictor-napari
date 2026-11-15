@@ -1,5 +1,5 @@
 """Synthetic datasets with ground truth through the Napari dock widget (one-off run, family `synthetic`, host `napari`). Not part of the UI audit: it reuses the audit's
-machinery (host window, fill of the form from a case, a real click on Run) to run EVERY case of a generated `cases.json` (tests/oneoff_2026-10/synthetic of the Tools repo) and
+machinery (host window, fill of the form from a case, a real click on Run) to run EVERY case of a generated `cases.json` (tests/audit/synthetic of the Tools repo) and
 writes one report per dataset in the shape `check_ground_truth.py` reads, with `host_observed` (the text of every pixel-size box after the form was filled).
 
     LC_HOME=<registry> LC_APP=<name> LC_APP_TESTS=<synthetic folder of the app: cases.json, fixtures/, ground_truth.json> LC_EXPECT_NAPARI=listed \
