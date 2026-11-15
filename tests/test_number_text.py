@@ -1,5 +1,5 @@
-"""Empty and required numbers, optional numbers, defaults, the copied command and sliders, through the real form (docs/SPEC_WRONG_SCIENCE.md section 6,
-HOST_PARITY B01, B04, B07). The grammar and the precision are in test_number_grammar.py.
+"""Empty and required numbers, optional numbers, defaults, the copied command and sliders, through the real form (Tools docs/SPEC_WRONG_SCIENCE.md
+section 6). The grammar and the precision are in test_number_grammar.py.
 
 The REQUEST a click would send (`_prepare_inputs`) is what is checked; an empty required field is refused (`'L' is required: type a number`),
 an optional one that is set and empty too, and a copied command never carries a number that a run would refuse.

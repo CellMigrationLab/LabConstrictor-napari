@@ -2,9 +2,9 @@
 
 A number is held as TEXT (`_number_field.NumberField`), because no Qt spin box holds every whole number up to 2**53 - 1 and every
 double without shortening it. The click reads that text (`check`): a value beyond a limit, declared or the form's own, is refused with
-the worker's sentence (HOST_PARITY I06) and never clamped, rounded to the box's decimals, or replaced by another number. No Qt here.
+the worker's sentence (Tools docs/PROTOCOL.md, number limits) and never clamped, rounded to the box's decimals, or replaced by another number. No Qt here.
 
-Grammar (HOST_PARITY D02, D03; the conformance file carries no regex yet): an integer is an optional sign and ASCII digits; a float is an
+Grammar (Tools docs/SPEC_WRONG_SCIENCE.md section 6; the conformance file carries no regex yet): an integer is an optional sign and ASCII digits; a float is an
 optional sign, digits with an optional fraction (or only a fraction) and an optional exponent. Surrounding blanks are trimmed. Nothing
 else is read as a number (no `1_000`, no `0x10`, no `5.`, no `nan` or `inf`, no non-ASCII digits).
 """
@@ -22,7 +22,7 @@ FLOAT_RANGE = (-MAX_FORM_FLOAT, MAX_FORM_FLOAT)
 
 ABOVE_MAXIMUM = "'{label}' must be <= {maximum}"  # conformance.json messages.number_above_maximum
 BELOW_MINIMUM = "'{label}' must be >= {minimum}"  # messages.number_below_minimum
-NOT_AN_INTEGER = "'{label}' must be an integer, got {got}"  # worker template + ", got 'x'" (HOST_PARITY I06)
+NOT_AN_INTEGER = "'{label}' must be an integer, got {got}"  # worker template + ", got 'x'"
 NOT_A_NUMBER = "'{label}' must be a number, got {got}"
 NOT_FINITE = "'{label}' must be a finite number, got {got}"
 TOO_SMALL = "'{label}' is too close to zero to be held exactly, got {got}"  # SPEC GAP: a text that would silently become 0.0
@@ -123,7 +123,7 @@ def check(param: dict[str, Any], value: Any) -> int | float:
 
 
 def nearest_to_zero(param: dict[str, Any]) -> int | float:
-    """Where a required number with no default starts (HOST_PARITY B07): the allowed value nearest to 0."""
+    """Where a required number with no default starts (Tools docs/SPEC_WRONG_SCIENCE.md section 6): the allowed value nearest to 0."""
     low, high = limits(param)
     value = min(max(0, low), high)
     return int(value) if param["type"] == "integer" else float(value)

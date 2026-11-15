@@ -1,4 +1,4 @@
-"""UI audit of the LabConstrictor Napari dock widget against an INSTALLED app (docs/UI_AUDIT.md; contract: TEST_STRATEGY.md section 3 of
+"""UI audit of the LabConstrictor Napari dock widget against an INSTALLED app (docs/UI_AUDIT.md; audit tooling: LabConstrictor-Tools tests/audit/README.md
 LabConstrictor-Tools). Run under xvfb in an environment with napari, labconstrictor-tools and napari-labconstrictor:
 
     LC_HOME=<registry with the app> LC_APP=<name> LC_APP_TESTS=<app>/lc_tests LC_EXPECT_NAPARI=listed LC_SHOTS=screens \\

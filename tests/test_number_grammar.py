@@ -1,4 +1,4 @@
-"""The grammar and the precision of number fields through the real form (docs/SPEC_WRONG_SCIENCE.md section 6, HOST_PARITY D02..D06, I06).
+"""The grammar and the precision of number fields through the real form (Tools docs/SPEC_WRONG_SCIENCE.md section 6 and docs/PROTOCOL.md, number limits).
 
 The REQUEST a click would send (`_prepare_inputs`) is what is checked. A number is what the person typed, no more and no less: no rounding to
 a box's decimals, no exponent lost, no digit dropped; a text that is not a number, is not finite or would become 0.0 is refused with the
