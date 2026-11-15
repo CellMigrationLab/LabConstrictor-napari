@@ -2,7 +2,7 @@
 
 `tests/ui_audit.py` presses every control of the LabConstrictor dock widget, opens the form of every tool of an **installed** app, runs
 each tool with the inputs of the app's own `lc_tests/cases.json`, and photographs the Napari window. It implements section 3 of
-`docs/TEST_STRATEGY.md` of LabConstrictor-Tools (the contract), host `napari`. The release sandbox calls it; you can call it by hand.
+LabConstrictor-Tools `tests/audit/README.md` (the audit tooling), host `napari`. The release sandbox calls it; you can call it by hand.
 
 ## Run it
 

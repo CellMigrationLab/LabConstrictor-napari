@@ -122,7 +122,7 @@ What the plugin does about cleanup (rules: section 3 of [SPEC_WRONG_SCIENCE](htt
 
 ## Current status
 
-**Testing phase.** CI runs the full test suite with PySide6 and PyQt6, each in its own environment, on Linux (under a virtual display), Windows and macOS. Tests on real machines by people are still open: the [human test protocol](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/HUMAN_TEST_PROTOCOL.md) explains how to help (its [record sheet](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/HUMAN_TEST_PROTOCOL.md#0-record-sheet-the-test-set-fill-in-before-you-start) is the form to fill in). Not every host supports every LabConstrictor presentation hint in the same way; this README describes the napari implementation, not a guarantee about Fiji or QuPath.
+**Testing phase.** CI runs the full test suite with PySide6 and PyQt6, each in its own environment, on Linux (under a virtual display), Windows and macOS. Tests on real machines by people are still open: please report what you find in the [issues](https://github.com/CellMigrationLab/LabConstrictor-napari/issues). Not every host supports every LabConstrictor presentation hint in the same way; this README describes the napari implementation, not a guarantee about Fiji or QuPath.
 
 For more detail, see [napari inputs and results](docs/USING_NAPARI.md).
 
