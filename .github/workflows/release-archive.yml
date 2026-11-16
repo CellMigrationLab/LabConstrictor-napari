@@ -1,0 +1,44 @@
+name: release-archive
+# Attaches the release's source to the release under a fixed name, labconstrictor-napari.zip, so that
+#   pip install https://github.com/CellMigrationLab/LabConstrictor-napari/releases/latest/download/labconstrictor-napari.zip
+# installs the newest release without naming a version. pip accepts a source archive whose name has no version (it reads the
+# version from pyproject.toml); a wheel cannot do this, because pip refuses a wheel whose file name has no version.
+# GitHub's "latest" is the newest release that is not a draft and not marked as a pre-release.
+# The archive is `git archive` of the tag, as GitHub's own "Source code (zip)" is; the release's other assets are not touched.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:   # to attach the archive to a release published before this workflow existed
+    inputs:
+      tag:
+        description: "Tag of an existing release, for example v0.1.0-alpha.5"
+        required: true
+permissions:
+  contents: write   # gh release upload
+jobs:
+  attach:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+      ARCHIVE: labconstrictor-napari.zip
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "refs/tags/${{ env.TAG }}" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Build the archive
+        run: git archive --format=zip --prefix=labconstrictor-napari/ -o "$ARCHIVE" HEAD
+      - name: Check that pip installs it as the tag's version
+        # a throwaway virtualenv, the package only (--no-deps): this checks the archive, not napari
+        run: |
+          python -m venv "$RUNNER_TEMP/check"
+          "$RUNNER_TEMP/check/bin/pip" install --no-deps "./$ARCHIVE"
+          installed="$("$RUNNER_TEMP/check/bin/python" -c 'import importlib.metadata as m; print(m.version("napari-labconstrictor"))')"
+          expected="$(python -c 'import sys; sys.path.insert(0, "scripts"); import check_version; print(check_version.tag_version(sys.argv[1]))' "$TAG")"
+          echo "tag $TAG: pip installed $installed, the tag names $expected"
+          test "$installed" = "$expected"
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$ARCHIVE" --clobber   # --clobber replaces only an earlier labconstrictor-napari.zip
