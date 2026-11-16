@@ -8,9 +8,7 @@ napari can discover the declared tools of registered LabConstrictor applications
 
 ## First run
 
-Install [LabConstrictor Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground) and open **Plugins > LabConstrictor tools**. Select **Feature tour**. Its optional image input can be left unset to generate a demonstration image.
-
-Check that the result includes labels, points, outlines, a table and a message. This tests data exchange with the widget; it does not validate a scientific segmentation method.
+[Check that it worked](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/#check-that-it-worked), in the napari guide, runs the **Feature tour** tool of the Playground app without an image: it makes its own demonstration image. The result includes labels, points, outlines, a table and a message. This tests data exchange with the widget; it does not validate a scientific segmentation method.
 
 ## Forms
 

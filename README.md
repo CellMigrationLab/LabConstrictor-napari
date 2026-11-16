@@ -6,40 +6,11 @@ Run the analysis tools of your LabConstrictor apps from inside [napari](https://
 
 *The StarDist2D app's "Segment nuclei" tool, run from napari on an open image layer.*
 
-> **Experimental.** This is an alpha pre-release (`v0.1.0-alpha.5`). It has been tested on Linux, Windows and macOS, but expect bugs and changes. Please [tell us](https://github.com/CellMigrationLab/LabConstrictor-napari/issues) what you find.
+> **Experimental.** This plugin is an alpha pre-release. It has been tested on Linux, Windows and macOS, but expect bugs and changes. Please [tell us](https://github.com/CellMigrationLab/LabConstrictor-napari/issues) what you find.
 
 ## Install
 
-You need napari running on **Python 3.11 or newer** with a Qt6 backend, and at least one LabConstrictor app.
-
-1. **Install a LabConstrictor app** from the [App Centre](https://cellmigrationlab.github.io/LabConstrictor-Site/apps/?host=napari). Its installer registers the app on your computer, which is how the plugin finds it.
-2. **Install the plugin** in the Python environment you start napari from:
-
-   ```bash
-   pip install "napari[pyqt6]" \
-     https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip \
-     https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.5.zip
-   ```
-
-3. **Restart napari.**
-
-The plugin is not on PyPI yet, so it is installed from these two addresses. Newer versions appear on the [Releases page](https://github.com/CellMigrationLab/LabConstrictor-napari/releases).
-
-## First use
-
-<img src="docs/img/napari-form.png" alt="The LabConstrictor tools panel in napari, showing the form of a tool" width="360" align="right">
-
-1. Open an image in napari.
-2. Choose **Plugins > LabConstrictor tools**.
-3. Pick an app, then a tool. The form shows that tool's settings; hover over an **ⓘ** to read what a setting means.
-4. Choose the image layer (or a file) and press **Run**. A progress bar and a **Cancel** button are there while the tool runs.
-5. Look at the results: new layers in the layer list, a table below the viewer, and a short summary under the Run button.
-
-No data at hand? Install the [Playground](https://github.com/CellMigrationLab/LabConstrictor-Playground) app and run its **Feature tour** tool without choosing an image: it makes its own demo image.
-
-<br clear="right">
-
-The step-by-step guide, with troubleshooting, is on the website: [Install the napari plugin](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/).
+Install it with pip in the Python environment you start napari from, and install at least one LabConstrictor app: see the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/). The guide also shows how to open the panel, check that it works and fix common problems.
 
 ## Apps that work in napari
 
@@ -56,7 +27,8 @@ Any LabConstrictor app that declares napari as one of its hosts appears in the p
 ## Getting help
 
 - **Something failed?** The line under the Run button says what went wrong, and **Details...** shows the full report.
-- **Guides:** the [LabConstrictor website](https://cellmigrationlab.github.io/LabConstrictor-Site/) and its [guides](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/).
+- **Install and first use:** the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/), with a section for when something does not work.
+- **More guides:** the [LabConstrictor website guides](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/).
 - **Bugs and questions:** the [issue tracker](https://github.com/CellMigrationLab/LabConstrictor-napari/issues).
 
 ## More detail
@@ -70,7 +42,7 @@ Any LabConstrictor app that declares napari as one of its hosts appears in the p
 The repository is `LabConstrictor-napari`; the Python package is `napari-labconstrictor`. To run the tests:
 
 ```bash
-pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip
+pip install git+https://github.com/CellMigrationLab/LabConstrictor-Tools   # the Tools source CI uses (needs git)
 pip install -e ".[test-pyqt6]"            # or ".[test-pyside6]"; one Qt backend per environment
 cd tests
 for t in test_*.py; do python "$t" || echo "FAILED: $t"; done   # on Linux without a display: xvfb-run -a python "$t"
