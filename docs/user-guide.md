@@ -1,43 +1,57 @@
 # Install the napari plugin
 
-One dock widget shows every installed LabConstrictor app. You pick an app and a tool, and the form is generated from the tool's declaration.
+Run the tools of your LabConstrictor apps from napari: one panel lists every installed app, you pick a tool, and its results come back as napari layers and tables.
 
 > [!WARNING]
-> **Under heavy construction.** The automated tests pass in CI, but people have not yet tested this plugin on real machines, so it is unlikely to be stable. Expect bugs, missing features and changes without notice. Do not rely on it for work you cannot redo.
->
-> The plugin is installed from GitHub; it is not on PyPI yet.
+> **Experimental.** This plugin is an alpha pre-release. It has been tested on Linux, Windows and macOS, but expect bugs and changes, and do not rely on it for work you cannot redo.
+
+![napari with the LabConstrictor tools panel: nuclei segmented by the StarDist2D app, shown as labels, outlines and a table](https://raw.githubusercontent.com/CellMigrationLab/LabConstrictor-napari/main/docs/img/napari-stardist.png)
 
 ## What you need
 
-- [napari](https://napari.org), in a Python environment with **Python 3.11 or newer**.
-- napari version: the project's automated type check runs against napari 0.9.2 and magicgui 0.10.2 (a type check only: napari is not run there). The automated tests (PySide6 and PyQt6 on Linux, Windows and macOS) install whichever napari version pip picks. Use a Qt6 backend: `pip install "napari[pyqt6]"` or `"napari[pyside6]"` (not PyQt5).
-- At least one LabConstrictor app installed on your computer (the [apps that work in napari](https://labconstrictor.cellmig.org/apps/?host=napari) are listed in the App Centre: apps declare which hosts list them in `hosts:` of their `labconstrictor-app.yaml`, and napari lists only the apps that declare it). Installing the app and installing this plugin are two separate steps: the app's installer registers it on your computer, which is how the plugin finds it.
+- [napari](https://napari.org), running on **Python 3.11 or newer** with a Qt6 backend (`napari[pyqt6]` or `napari[pyside6]`; PyQt5 is not tested).
+- At least one LabConstrictor app that works in napari. The [App Centre](https://cellmigrationlab.github.io/LabConstrictor-Site/apps/?host=napari) lists them. Installing the app and installing this plugin are two separate steps: the app's installer registers the app on your computer, which is how the plugin finds it.
 
 ## Install
 
-Run these commands in the same environment you start napari from. If you start napari from a terminal after `conda activate <name>` (or after activating a virtual environment), activate that environment first. If you installed napari with its desktop installer, follow [napari](https://napari.org)'s instructions for adding packages to that installation. Then install the tools runtime and the plugin:
+Run this command in the same Python environment you start napari from. If you start napari after `conda activate <name>` (or after activating a virtual environment), activate that environment first. If you installed napari with its desktop installer, follow [napari](https://napari.org)'s instructions for adding packages to that installation.
 
     pip install "napari[pyqt6]" \
       https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip \
       https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.5.zip
 
-`v0.1.0-alpha.5` is an alpha pre-release: take the newest tag on the [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page and put it in the address. Never install from `main.zip`. These are source archives, so you do not need `git`. Use a **Qt6** backend (`napari[pyqt6]` or `napari[pyside6]`); PyQt5 is not tested. The plugin needs LabConstrictor-Tools 0.3.0a1 or newer (it depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one), and so do the apps you run in Fiji and QuPath; host requirements (below) are checked with Tools 0.3.0a2 or newer. The full install page for apps and hosts is [Tools `docs/INSTALL.md`](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/INSTALL.md); report problems in the [issue tracker](https://github.com/CellMigrationLab/LabConstrictor-napari/issues). Restart napari.
+Then restart napari.
+
+The plugin is not on PyPI yet, so it is installed from these two addresses: the first is the LabConstrictor tools package the plugin needs, the second is the plugin. You do not need `git`. Newer versions appear on the [Releases page](https://github.com/CellMigrationLab/LabConstrictor-napari/releases); to update, put the newest version in the second address and run the command again.
 
 ## Open it
 
-Choose **Plugins > LabConstrictor tools**. The widget lists the apps registered on your computer. Pick an app, pick a tool, set the parameters, and press Run.
+1. Open an image in napari.
+2. Choose **Plugins > LabConstrictor tools**. The panel lists the apps installed on your computer.
+3. Pick an app, then a tool. The form shows the tool's settings; hover over an **ⓘ** to read what a setting means.
+4. Choose the image and press **Run**.
 
-A first run needs an installed LabConstrictor app that declares tools. If none is registered, the app list shows "(none registered)" and there is nothing to run.
+![The LabConstrictor tools panel in napari, showing the form of a tool](https://raw.githubusercontent.com/CellMigrationLab/LabConstrictor-napari/main/docs/img/napari-form.png)
 
-- Image inputs take an open layer or a file (a chosen file wins). TIFF and OME-TIFF always work; other formats work if the app has `imageio`.
-- Results appear as layers, a table, or in the status line. A tool that finds nothing shows a notice, not an error.
-- A progress bar and a Cancel button are there while a tool runs.
-- An app can declare the oldest napari plugin it needs (`host_requirements`). If yours is older, a warning is shown with the app's tools; if the app marks it as required, Run is refused until you install a newer plugin tag.
+Good to know:
+
+- An image input takes an open layer or a file. If you give both, the file is used. TIFF and OME-TIFF files always work.
+- Results appear as layers, as a table below the viewer, or as a short summary under the Run button. A tool that finds nothing shows a notice, not an error.
+- A progress bar and a **Cancel** button are there while a tool runs.
+- A pixel-size setting is filled in from the image when the image says its pixel size. If it does not, the field stays empty and you type the value.
+- **Copy as command** gives you the last run as a terminal command or a Python snippet, to repeat it outside napari.
+- If you install another app while napari is open, press **Rescan apps**.
+
+## Check that it worked
+
+Install the [Playground](https://cellmigrationlab.github.io/LabConstrictor-Site/apps/labconstrictor-playground/) app, pick it in the panel and run its **Feature tour** tool without choosing an image: it makes its own small demo image. You should get a label layer, tables, and the message "Found 16 blob(s)" under the Run button.
 
 ## If something does not work
 
-- The status line says what failed; **Details...** shows the error, the worker's output and the end of the log.
-- `labconstrictor-tools doctor` shows which apps are registered and why one might be skipped.
-- `labconstrictor-tools support-bundle` zips the log for a bug report. The log is `~/.labconstrictor/logs/labconstrictor.log`.
+- **The app list says "(none registered)".** No LabConstrictor app is installed yet, or the app does not offer its tools in napari. Install an app, then press **Rescan apps**.
+- **A run fails.** The line under the Run button says what failed; **Details...** shows the full report.
+- **A warning says the plugin is too old for an app.** Install the newest plugin version (see Install). If the app requires the newer version, Run stays refused until you do.
+- **You want to know which apps are found, and why one is skipped.** Run `labconstrictor-tools doctor` in a terminal, in napari's environment.
+- **You want to report a bug.** `labconstrictor-tools support-bundle` makes a zip file with the log; attach it to an [issue](https://github.com/CellMigrationLab/LabConstrictor-napari/issues). The log itself is `~/.labconstrictor/logs/labconstrictor.log`.
 
-Source and issues: [LabConstrictor-napari](https://github.com/CellMigrationLab/LabConstrictor-napari) (the Python package is `napari-labconstrictor`).
+More detail on inputs, results and what is saved to disk: [Using LabConstrictor in napari](https://github.com/CellMigrationLab/LabConstrictor-napari/blob/main/docs/USING_NAPARI.md). Source code and issues: [LabConstrictor-napari](https://github.com/CellMigrationLab/LabConstrictor-napari).
