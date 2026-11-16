@@ -1,14 +1,10 @@
 # Technical reference: the napari plugin
 
-Details for developers and curious users: how the form is built, where results are placed, what is written to disk, and how to work on the code. To install and use the plugin, read the [README](../README.md) or the [user guide](user-guide.md); the day-to-day description of inputs and results is in [Using LabConstrictor in napari](USING_NAPARI.md).
+Details for developers and curious users: how the form is built, where results are placed, what is written to disk, and how to work on the code. To install and use the plugin, read the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/); the day-to-day description of inputs and results is in [Using LabConstrictor in napari](USING_NAPARI.md).
 
 ## Use it with your own data
 
-1. Open an image in napari, or prepare a TIFF/OME-TIFF file.
-2. Choose **Plugins > LabConstrictor tools**.
-3. Select the registered application and the tool.
-4. Choose a layer or a file for each image input. If both are set, **the file wins**.
-5. Set the parameters and run. Watch the progress and inspect the results in napari.
+How to open the panel, pick a tool and run it is in the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/#open-it). Each image input takes a layer or a TIFF/OME-TIFF file; if both are set, **the file wins**.
 
 ### What the form can do
 
@@ -53,29 +49,17 @@ If a tool reports that nothing matched (the code `no_match` or `no_result`), the
 
 ## Install
 
-Full step-by-step page for the apps and all three hosts: [LabConstrictor-Tools `docs/INSTALL.md`](https://github.com/CellMigrationLab/LabConstrictor-Tools/blob/main/docs/INSTALL.md). The plugin is installed from GitHub tags, never from `main`.
+The install command and the current versions are in the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/#install), the only page that lists them. What the install depends on:
 
-In the Python environment you start napari from (**Python 3.11 or newer**; napari 0.8 and later need it), with a **Qt6** backend:
-
-```bash
-python -m pip install "napari[pyqt6]" \
-  https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip \
-  https://github.com/CellMigrationLab/LabConstrictor-napari/archive/refs/tags/v0.1.0-alpha.5.zip
-```
-
-- `v0.1.0-alpha.5` is an alpha pre-release: take the newest tag on the [Releases](https://github.com/CellMigrationLab/LabConstrictor-napari/releases) page and put it in the address. Never install from `main.zip`.
 - **Qt6 only:** use `napari[pyqt6]` (or `napari[pyside6]`). PyQt5 is not tested here, so avoid `napari[pyqt5]`; napari deprecated it in 0.8.0. The plugin installs no Qt backend of its own: it uses `qtpy` and runs on the one your napari has.
-- **Tools 0.3.0a1 or newer** is required in napari's environment: the plugin depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one. Install `v0.3.0-alpha.2` (version `0.3.0a2`) as above: host requirements (below) are checked only with Tools 0.3.0a2 or newer. The apps you want to run also need Tools 0.3.0a1 or newer to work in Fiji and QuPath (Fiji and QuPath leave out an older app; this plugin only skips the cleanup step for it, and its other behaviour with such an app is not verified). An app released with the older pin `v0.2.0-rc.1` therefore needs a new release first.
+- **From release tags, never from `main`:** the plugin is not on PyPI yet, so it is installed from a release's source archive. No `git` program is needed. Never install from `main.zip`.
+- **Tools 0.3.0a1 or newer** is required in napari's environment: the plugin depends on `labconstrictor-tools>=0.3.0a1` and refuses to load with an older one. Host requirements (below) are checked only with Tools 0.3.0a2 or newer. The apps you want to run also need Tools 0.3.0a1 or newer to work in Fiji and QuPath (Fiji and QuPath leave out an older app; this plugin only skips the cleanup step for it, and its other behaviour with such an app is not verified). An app released with the older pin `v0.2.0-rc.1` therefore needs a new release first.
 
 Why 0.3.0a1: the plugin uses `runs.build_record`, `runs.record_json` and `runs.done_status` to write `run.json` and the done marker exactly as Tools does. Those came in v0.2.0-rc.2, which reports the same version as rc.1 (`0.2.0rc1`), so `pip` requires `labconstrictor-tools>=0.3.0a1`, and the plugin also checks the version and the three functions when it loads.
 
 **Which apps are listed:** napari lists an app only if the app declares napari in its `hosts` (registry entry field, feature `app_hosts_v1`, rule `labconstrictor_tools.app_hosts.listed_for`). An app that leaves napari out, or whose declaration is not valid, is not offered; the widget says so in its "skipped" line and the sentence is written to the Tools log. An app with no declaration is still listed, and the log says `declares no hosts` each time the list is read. This needs Tools 0.3.0a1 with the feature `app_hosts_v1`; the plugin refuses to load without it.
 
 **Host requirements:** an app can declare the oldest napari plugin it needs (`host_requirements`, host feature `host_requirements_v1`, checked with Tools 0.3.0a2 or newer). When this plugin is older, the app stays listed and a warning is shown with its tools and written to the Tools log; when the requirement says `required: true`, Run is refused for that app until you install a newer plugin tag.
-
-Neither is on PyPI yet. These are source archives, so no `git` program is needed (with git you can use `git+https://github.com/CellMigrationLab/<repository>` instead).
-
-Then start napari and choose **Plugins > LabConstrictor tools**.
 
 You must also install the LabConstrictor application whose tools you want to run. Its installer normally registers it. If nothing appears, inspect the registry:
 
@@ -117,7 +101,7 @@ The widget lives in `napari_labconstrictor/_widget.py`, with schema conversion i
 Install one Qt backend per environment, through its test extra (never both in one environment), and LabConstrictor-Tools:
 
 ```bash
-python -m pip install https://github.com/CellMigrationLab/LabConstrictor-Tools/archive/refs/tags/v0.3.0-alpha.2.zip
+python -m pip install git+https://github.com/CellMigrationLab/LabConstrictor-Tools   # the Tools source CI uses (needs git)
 python -m pip install -e ".[test-pyqt6]"      # or ".[test-pyside6]"
 cd tests
 python test_units.py
@@ -141,7 +125,7 @@ Every `tests/test_*.py` is a standalone script; CI runs them all in a loop (a ne
 
 CI runs PySide6 and PyQt6 on Linux, Windows and macOS (`LC_EXPECT_QT` makes `test_qt_backend.py` fail if the wrong binding was loaded), plus lint (black, ruff, the annotation check) and a mypy type check of the package, the tests and the scripts.
 
-**Releasing.** The package version names the release, so `pip show napari-labconstrictor` tells which one is installed. Between releases `version` in `pyproject.toml` is the next release's version with `.dev0` (e.g. `0.1.0a5.dev0`). To release, set it to the tag's version (`v0.1.0-alpha.5` is `0.1.0a5`), merge, then tag. `python scripts/check_version.py <tag>` compares the two, and the `version` workflow runs it on every pushed tag and fails when they differ.
+**Releasing.** The package version names the release, so `pip show napari-labconstrictor` tells which one is installed. Between releases `version` in `pyproject.toml` is the next release's version with `.dev0` (for example `0.2.0b1.dev0`). To release, set it to the tag's version (`v0.2.0-beta.1` is `0.2.0b1`), merge, then tag. `python scripts/check_version.py <tag>` compares the two, and the `version` workflow runs it on every pushed tag and fails when they differ.
 
 **Annotations (a rule, not a style).** Every function in `napari_labconstrictor/`, `tests/` and `scripts/` is annotated: every parameter (`self` / `cls` excepted, `*args` and `**kwargs` included) and the return (`-> None` included). A lambda has no syntax for annotations and is not counted. `python scripts/check_annotations.py` (standard library only, it reads the files and never imports them) lists every function that lacks one and exits 1; the lint job runs it, `--summary` prints the count per file. The one allowed exception is a function that is unannotated on purpose (for example a test that checks what happens to a tool declared without annotations): `# lc-annotations: skip - <reason>` on its `def` line, and a marker without a reason does not count. No function carries it today.
 
