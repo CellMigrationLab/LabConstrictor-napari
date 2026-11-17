@@ -2,9 +2,6 @@
 
 Run the tools of your LabConstrictor apps from napari: one panel lists every installed app, you pick a tool, and its results come back as napari layers and tables.
 
-> [!WARNING]
-> **Experimental.** This plugin is an alpha pre-release. It has been tested on Linux, Windows and macOS, but expect bugs and changes, and do not rely on it for work you cannot redo.
-
 ![napari with the LabConstrictor tools panel: nuclei segmented by the StarDist2D app, shown as labels, outlines and a table](https://raw.githubusercontent.com/CellMigrationLab/LabConstrictor-napari/main/docs/img/napari-stardist.png)
 
 ## What you need
