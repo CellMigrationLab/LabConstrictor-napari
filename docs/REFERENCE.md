@@ -90,7 +90,7 @@ What the plugin does about cleanup (rules: section 3 of [SPEC_WRONG_SCIENCE](htt
 
 ## Current status
 
-**Testing phase.** CI runs the full test suite with PySide6 and PyQt6, each in its own environment, on Linux (under a virtual display), Windows and macOS. People have also tested the plugin on Windows and macOS. Please report what you find in the [issues](https://github.com/CellMigrationLab/LabConstrictor-napari/issues). Not every host supports every LabConstrictor presentation hint in the same way; this page describes the napari implementation, not a guarantee about Fiji or QuPath.
+**Testing.** CI runs the full test suite with PySide6 and PyQt6, each in its own environment, on Linux (under a virtual display), Windows and macOS. People have also tested the plugin on Windows and macOS. Please report what you find in the [issues](https://github.com/CellMigrationLab/LabConstrictor-napari/issues). Not every host supports every LabConstrictor presentation hint in the same way; this page describes the napari implementation, not a guarantee about Fiji or QuPath.
 
 For more detail, see [napari inputs and results](USING_NAPARI.md).
 

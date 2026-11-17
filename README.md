@@ -6,7 +6,7 @@ Run the analysis tools of your LabConstrictor apps from inside [napari](https://
 
 *The StarDist2D app's "Segment nuclei" tool, run from napari on an open image layer.*
 
-> **Experimental.** This plugin is an alpha pre-release. It has been tested on Linux, Windows and macOS, but expect bugs and changes. Please [tell us](https://github.com/CellMigrationLab/LabConstrictor-napari/issues) what you find.
+It has been tested on Linux, Windows and macOS. Please [tell us](https://github.com/CellMigrationLab/LabConstrictor-napari/issues) what you find.
 
 ## Install
 
