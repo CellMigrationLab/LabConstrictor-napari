@@ -6,11 +6,11 @@ Run the analysis tools of your LabConstrictor apps from inside [napari](https://
 
 *The StarDist2D app's "Segment nuclei" tool, run from napari on an open image layer.*
 
-It has been tested on Linux, Windows and macOS. Please [tell us](https://github.com/CellMigrationLab/LabConstrictor-napari/issues) what you find.
+It runs on Linux, Windows and macOS.
 
 ## Install
 
-Install it with pip in the Python environment you start napari from, and install at least one LabConstrictor app: see the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/). The guide also shows how to open the panel, check that it works and fix common problems.
+In the Python environment you start napari from, install napari, LabConstrictor-Tools and this plugin with one `pip install` line, then install at least one LabConstrictor app. The [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/) has the command for the current release, and shows how to open the panel, check that it works and fix common problems.
 
 ## Apps that work in napari
 
@@ -24,30 +24,15 @@ Install it with pip in the Python environment you start napari from, and install
 
 Any LabConstrictor app that declares napari as one of its hosts appears in the panel; no extra plugin is needed per app. The [App Centre](https://cellmigrationlab.github.io/LabConstrictor-Site/apps/?host=napari) has the current list.
 
-## Getting help
+## More
 
-- **Something failed?** The line under the Run button says what went wrong, and **Details...** shows the full report.
-- **Install and first use:** the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/), with a section for when something does not work.
-- **More guides:** the [LabConstrictor website guides](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/).
+- **Install, first use and problems:** the [napari guide](https://cellmigrationlab.github.io/LabConstrictor-Site/guides/napari/).
+- **How it works, and working on the code:** the [napari plugin reference](docs/REFERENCE.md).
 - **Bugs and questions:** the [issue tracker](https://github.com/CellMigrationLab/LabConstrictor-napari/issues).
-
-## More detail
-
-- [Using LabConstrictor in napari](docs/USING_NAPARI.md): image inputs, channels, pixel size, selections, where results are drawn, run records.
-- [Technical reference](docs/REFERENCE.md): the rules behind the form and the results, and notes for developers.
 - The same apps also run in [Fiji](https://github.com/CellMigrationLab/LabConstrictor-Fiji) and [QuPath](https://github.com/CellMigrationLab/LabConstrictor-QuPath). To make your own app, start at the [LabConstrictor website](https://cellmigrationlab.github.io/LabConstrictor-Site/).
 
 ## For developers
 
-The repository is `LabConstrictor-napari`; the Python package is `napari-labconstrictor`. To run the tests:
-
-```bash
-pip install git+https://github.com/CellMigrationLab/LabConstrictor-Tools   # the Tools source CI uses (needs git)
-pip install -e ".[test-pyqt6]"            # or ".[test-pyside6]"; one Qt backend per environment
-cd tests
-for t in test_*.py; do python "$t" || echo "FAILED: $t"; done   # on Linux without a display: xvfb-run -a python "$t"
-```
-
-Each `tests/test_*.py` is a standalone script, and they use a small example app, so no scientific app needs to be installed. Linting, type checks and releasing are described in the [technical reference](docs/REFERENCE.md#development) and in [tests/README.md](tests/README.md).
+The repository is `LabConstrictor-napari`; the Python package is `napari-labconstrictor`. Running the tests, linting and releasing are in the [reference](docs/REFERENCE.md#working-on-the-code).
 
 License: [MIT](LICENSE).
