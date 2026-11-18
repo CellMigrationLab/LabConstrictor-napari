@@ -67,8 +67,9 @@ Run the tools of your LabConstrictor apps from napari: one panel lists every ins
 - **Messages and values** appear under the Run button.
 - **Nothing found** is shown as a notice, not as an error.
 - **Files the tool wrote** are kept in a folder under `~/.labconstrictor/results`, and the line under the Run button shows its path.
+- **Only the newest 20 result folders are kept**, older ones are deleted automatically. Copy a result you want to keep to a folder of your own (or save the layer from napari) before it gets old.
 
-Very large results are not shown in full: an image over 4 GB is not loaded, a table shows at most 100 000 rows and at most 50 000 outlines are drawn. The tool's own files hold everything.
+Very large results are not shown in full: an image over 4 GiB is not loaded, a table shows at most 100 000 rows and at most 50 000 outlines are drawn. The tool's own files hold everything.
 
 > [!TIP]
 > **Good to know.**
