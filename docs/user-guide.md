@@ -49,7 +49,7 @@ Run the tools of your LabConstrictor apps from napari: one panel lists every ins
    ```
 
 > [!NOTE]
-> **Why two addresses.** The plugin is not on PyPI yet, so it is installed from two release archives: the first is LabConstrictor-Tools, a package the plugin needs, the second is the plugin. You do not need `git`. Newer versions appear on the [Releases page](https://github.com/CellMigrationLab/LabConstrictor-napari/releases); to update, put the newest version in the second address and run the command again.
+> **Why two addresses.** The plugin is not on PyPI yet, so it is installed from two release archives: the first is LabConstrictor-Tools, a package the plugin needs, the second is the plugin. You do not need `git`. To update, run the command from this guide again: it always names a plugin version and the LabConstrictor-Tools version that goes with it. Change both addresses together, never only the plugin's.
 
 ## Open it
 
